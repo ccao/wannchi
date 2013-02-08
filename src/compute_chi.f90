@@ -29,14 +29,13 @@ SUBROUTINE compute_chi_diag(chi, qv)
     !
     do io=1, nbnd
       do jo=1, nbnd
-        if ( (eig(ik, io)>ef).and.(eig(jk, jo)<ef) ) then
-          fact=SUM(egv(ik, :, io)*conjg(egv(jk, :, jo)))
-          chi=chi+conjg(fact)*fact/(eig(jk, jo)-eig(ik, io)+eta*cmplx_i)
-        else 
-          if ( (eig(ik, io)<ef).and.(eig(jk, jo)>ef) ) then
-            fact=SUM(egv(ik, :, io)*conjg(egv(jk, :, jo)))
-            chi=chi-conjg(fact)*fact/(eig(jk, jo)-eig(ik, io)-eta*cmplx_i)
-          endif
+        if ( (eig(io, ik)>ef).and.(eig(jo, jk)<ef) ) then
+          fact=SUM(egv(:, io, ik)*conjg(egv(:, jo, jk)))
+          chi=chi+conjg(fact)*fact/(eig(jo, jk)-eig(io, ik)+eta*cmplx_i)
+        endif
+        if ( (eig(io, ik)<ef).and.(eig(jo, jk)>ef) ) then
+          fact=SUM(egv(:, io, ik)*conjg(egv(:, jo, jk)))
+          chi=chi-conjg(fact)*fact/(eig(jo, jk)-eig(io, ik)-eta*cmplx_i)
         endif
       enddo
     enddo

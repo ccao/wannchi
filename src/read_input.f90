@@ -1,17 +1,26 @@
 SUBROUTINE read_input
   !
+  use para
   use banddata
   !
   implicit none
   !
-  open(unit=fin, file="input")
-  read(fin, *) ef
-  read(fin, *) nkx, nky, nkz
-  close(unit=fin)
+  if (inode.eq.0) then
+    open(unit=fin, file="input")
+    read(fin, *) ef
+    read(fin, *) nkx, nky, nkz
+    close(unit=fin)
+  endif
+  !
+  CALL para_sync(nbnd)
+  CALL para_sync(ef)
+  CALL para_sync(nkx)
+  CALL para_sync(nky)
+  CALL para_sync(nkz)
   !
   nkpt=nkx*nky*nkz
   !
-  allocate(eig(1:nkpt, 1:nbnd))
-  allocate(egv(1:nkpt, 1:nbnd, 1:nbnd))
+  allocate(eig(1:nbnd, 1:nkpt))
+  allocate(egv(1:nbnd, 1:nbnd, 1:nkpt))
   !
 END SUBROUTINE
