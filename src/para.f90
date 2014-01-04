@@ -13,7 +13,7 @@ INTERFACE para_sync
 END INTERFACE
   !
 INTERFACE para_merge
-  MODULE PROCEDURE para_merge_real1, para_merge_real2, para_merge_cmplx1, para_merge_cmplx3
+  MODULE PROCEDURE para_merge_real0, para_merge_real1, para_merge_real2, para_merge_cmplx1, para_merge_cmplx3
 END INTERFACE
   !
 CONTAINS
@@ -123,7 +123,24 @@ SUBROUTINE para_sync_cmplx3(dat, size1, size2, size3)
 #endif
   !
 END SUBROUTINE
-  
+
+SUBROUTINE para_merge_real0(dat)
+  !
+  use constants, only :dp
+  !
+  implicit none
+  !
+  real(dp) dat, tot
+  !
+  integer ierr
+  !
+#if defined __MPI
+  CALL mpi_reduce(dat, tot, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, mpi_comm_world, ierr)
+  dat=tot
+#endif
+  !
+END SUBROUTINE
+
 SUBROUTINE para_merge_real1(dat, dat_size)
   !
   use constants, only :dp

@@ -12,7 +12,7 @@ SUBROUTINE read_ham(seed)
   REAL(DP) a, b
   !
   if (inode.eq.0) then
-    write(stdout, *) "Reading file "//trim(seed)//"_hr.dat"
+    write(stdout, *) " # Reading file "//trim(seed)//"_hr.dat"
     !
     open(unit=fin, file=trim(seed)//"_hr.dat")
     !
@@ -20,7 +20,7 @@ SUBROUTINE read_ham(seed)
     read(fin, *) norb
     read(fin, *) nrpt
     !
-    write(stdout, *) "  Dimensions:"
+    write(stdout, *) " #  Dimensions:"
     write(stdout, *) "    # of orbitals:", norb
     write(stdout, *) "    # of real-space grid:", nrpt
   endif
@@ -53,7 +53,7 @@ SUBROUTINE read_ham(seed)
     enddo
     !
     close(unit=fin)
-    write(stdout, *) "Done."
+    write(stdout, *) " # Done."
   endif
   !
   CALL para_sync(ham, norb, norb, nrpt)

@@ -7,6 +7,7 @@ SUBROUTINE interpolate_bands
   use constants, only : dp, twopi, cmplx_0, cmplx_i, stdout
   use wanndata,  only : rvec, ham, weight, nrpt, norb
   use banddata,  only : nkpt, nkx, nky, nkz, egv, eig
+  use input,     only : code
   !
   implicit none
   !
@@ -23,8 +24,8 @@ SUBROUTINE interpolate_bands
   allocate(e(1:norb))
   !
   if(inode.eq.0) then
-    write(stdout, *) "Starting interpolation of the original states to"
-    write(stdout, *) nkx, "x", nky, "x", nkz, " K-mesh"
+    write(stdout, *) " # Starting interpolation of the original states to"
+    write(stdout, *) " # ", nkx, "x", nky, "x", nkz, " K-mesh"
   endif
   !
   first_k=inode*nkpt/nnode+1
@@ -41,17 +42,20 @@ SUBROUTINE interpolate_bands
     !
     call heev(work, e, 'V', 'U', info)
     !
-    egv(:, :, ik)=work(:,:)
+    if (code.eq.0) &
+     & egv(:, :, ik)=work(:,:)
     eig(:, ik)=e(:)
   enddo ! ik
   !
-  CALL para_merge(egv, norb, norb, nkpt)
+  if (code.eq.0) &
+     & CALL para_merge(egv, norb, norb, nkpt)
   CALL para_merge(eig, norb, nkpt)
   !
   if(inode.eq.0) then
-    write(stdout, *) "Done..."
+    write(stdout, *) " # Done..."
   endif
   !
   deallocate(work)
+  deallocate(e)
   !
 END SUBROUTINE
