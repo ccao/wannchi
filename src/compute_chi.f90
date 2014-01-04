@@ -1,14 +1,21 @@
 SUBROUTINE compute_chi_bare(qv)
   !
+<<<<<<< HEAD
   use constants, only: dp, cmplx_0, cmplx_i, eps, eps4
   use banddata,  only: eig, egv, nkx, nky, nkz, nkpt, nbnd, ef
   use input,     only: temp, omega
   use chidata,   only: chi_loc
+=======
+  use constants, only : dp, eps9
+  use banddata, only : kvec, nbnd, occ, eig, xi
+  use input, only : omega, eps
+>>>>>>> New modulized version
   !
   implicit none
   !
   real(dp) qv(1:3)
   !
+<<<<<<< HEAD
   !
   real(dp) ikv(1:3), jkv(1:3)   !  k & k+q
   !
@@ -20,19 +27,74 @@ SUBROUTINE compute_chi_bare(qv)
   real(dp) occ_io, occ_jo
   !
   if (.not.allocated(chi_loc)) allocate(chi_loc(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
+=======
+  real(dp) ikv(1:3), jkv(1:3)
+  !
+  integer io, jo, ik, jk
+  integer ii, jj, kk, ll
+  complex(dp) fact
+  !
+  if (.not. allocated(chi_loc)) then
+    allocate(chi_loc(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
+    chi_loc(:, :, :, :) = cmplx_0
+  endif
+  !
+  do ik=1, nkpt
+    ikv(:)=kvec(:, ik)
+    jkv(:)=ikv(:)+qv(:)
+    jk=kpt_index(jkv)
+    !
+    do io=1, nbnd
+      do jo=1, nbnd
+        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
+          do ii=1, nbnd
+            do jj=1, nbnd
+              do kk=1, nbnd
+                do ll=1, nbnd
+                  chi_loc(ii, jj, kk, ll) = (occ(jo, jk)-occ(io-ik))*xi(ii, kk, io, ik)*xi(ll, jj, jo, jk)/(omega+eig(jo, jk)-eig(io, ik)+cmplx_i*eps)
+                enddo
+              enddo
+            enddo
+          enddo ! ii
+        endif 
+      enddo ! jo
+    enddo ! io
+  enddo ! ik
+  chi_loc(:, :, :, :)=-chi_loc(:, :, :, :)/nkpt
+  !
+END SUBROUTINE
+
+SUBROUTINE compute_chi_bare_diag(chi, qv)
+  !
+  use constants, only : dp, eps9
+  use banddata, only : kvec, nbnd, occ, eig, xi
+  use input, only : omega, eps
+  !
+  implicit none
+  !
+  real(dp) qv(1:3)
+  complex(dp) chi, chi_tmp
+  !
+  real(dp) ikv(1:3), jkv(1:3)
+  !
+  integer io, jo, ik, jk
+  integer ii, jj
+  complex(dp) fact
+>>>>>>> New modulized version
   !
   chi_loc(:,:,:,:)=cmplx_0
   !
   do ik=1, nkpt
-    CALL map_to_kpt(ikv, ik, nkx, nky, nkz)
+    ikv(:)=kvec(:, ik)
     jkv(:)=ikv(:)+qv(:)
-    CALL map_to_idx(jk, jkv, nkx, nky, nkz)
+    jk=kpt_index(jkv)
     !
     do io=1, nbnd
       !
       occ_io=fermi_dirac(eig(io, ik)-ef, temp)
       !
       do jo=1, nbnd
+<<<<<<< HEAD
         !
         occ_jo=fermi_dirac(eig(jo, jk)-ef, temp)
         !
@@ -154,6 +216,21 @@ SUBROUTINE compute_chi_diag(chi, qv)
       endif
     enddo
   enddo
+=======
+        chi_tmp = cmplx_0
+        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
+          do ii=1, nbnd
+            do jj=1, nbnd
+              chi_tmp = chi_tmp+xi(ii, jj, io, ik)*xi(jj, ii, jo, jk)
+            enddo
+          enddo ! ii
+        endif
+        chi=chi+chi_tmp*(occ(jo, jk)-occ(io, ik))/(omega+eig(jo, jk)-eig(io, ik)+cmplx_i*eps)
+      enddo ! jo
+    enddo ! io
+  enddo ! ik
+  chi=-chi/nkpt
+>>>>>>> New modulized version
   !
 END SUBROUTINE
 

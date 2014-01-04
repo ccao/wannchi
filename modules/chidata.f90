@@ -4,14 +4,13 @@ MODULE chidata
   !
   implicit none
   !
+  integer nqx, nqy, nqz
+  integer nqpt
   complex(dp), allocatable :: chi_loc(:, :, :, :)
   complex(dp), allocatable :: chi_bare(:, :, :, :)
   complex(dp), allocatable :: chi_rpa(:, :, :, :)
   complex(dp), allocatable :: u_mat(:, :, :, :)
-<<<<<<< HEAD
   complex(dp), allocatable :: chi_tmp(:, :, :, :)
-=======
->>>>>>> New modulized version
   complex(dp), allocatable :: u_chi(:, :, :, :)
   !
 CONTAINS
@@ -24,10 +23,7 @@ CONTAINS
     if(allocated(chi_bare)) deallocate(chi_bare)
     if(allocated(chi_rpa)) deallocate(chi_rpa)
     if(allocated(u_mat)) deallocate(u_mat)
-<<<<<<< HEAD
     if(allocated(chi_tmp)) deallocate(chi_tmp)
-=======
->>>>>>> New modulized version
     if(allocated(u_chi)) deallocate(u_chi)
   END SUBROUTINE
   !

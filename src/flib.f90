@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 FUNCTION fermi_dirac(en, temp)
   !
   use constants, only: dp
@@ -66,16 +67,28 @@ SUBROUTINE matrix_multiply(c, a, b, n)
 END SUBROUTINE
 
 SUBROUTINE map_to_kpt(kv, ik, nkx, nky, nkz)
+=======
+INTEGER FUNCTION kpt_index(kv)
+>>>>>>> New modulized version
   !
-  use constants, only: dp
+  use banddata, only : kvec, nkpt
+  use constants, only : dp, eps6
   !
   implicit none
   !
-  real(dp) kv(1:3)
-  integer ik, nkx, nky, nkz
+  integer ik
+  logical found
+  real(dp) dk(1:3)
   !
-  integer ikx, iky, ikz
+  do ik=1, nkpt
+    dk(:)=(kv(:)-kvec(:))-nint(kv(:)-kvec(:))
+    if ( abs(dk(1))<eps6.and.abs(dk(2))<eps6.and.abs(dk(3))<eps6 ) then
+      kpt_index=ik
+      return
+    endif
+  enddo
   !
+<<<<<<< HEAD
   ikx=mod(ik-1, nkx)
   iky=mod( (ik-1-ikx)/nkx, nky )
   ikz=(ik-1-iky*nkx-ikx)/(nkx*nky)
@@ -85,33 +98,9 @@ SUBROUTINE map_to_kpt(kv, ik, nkx, nky, nkz)
 !  if (kv(1)>0.5) kv(1)=kv(1)-1.d0
 !  if (kv(2)>0.5) kv(2)=kv(2)-1.d0
 !  if (kv(3)>0.5) kv(3)=kv(3)-1.d0
+=======
+  kpt_index=-1
+  return
+>>>>>>> New modulized version
   !
-END SUBROUTINE
-
-SUBROUTINE map_to_idx(ik, kv, nkx, nky, nkz)
-  !
-  use constants, only: dp
-  !
-  implicit none
-  !
-  integer ik, nkx, nky, nkz
-  !
-  real(dp) kv(1:3)
-  !
-  integer ikx, iky, ikz, iik
-  !
-  ikx=kv(1)*nkx
-  iky=kv(2)*nky
-  ikz=kv(3)*nkz
-  !
-  ikx=mod(ikx, nkx)
-  iky=mod(iky, nky)
-  ikz=mod(ikz, nkz)
-  !
-  if (ikx<0) ikx=ikx+nkx
-  if (iky<0) iky=iky+nky
-  if (ikz<0) ikz=ikz+nkz
-  !
-  ik=ikz*nky*nkx+iky*nkx+ikx+1
-  !
-END SUBROUTINE
+END FUNCTION

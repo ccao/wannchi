@@ -1,3 +1,28 @@
+!
+!   wanndata.f90
+!   
+!
+!   Created by Chao Cao on 01/03/14.
+!   Copyright 2013 __MyCompanyName__. All rights reserved.
+!
+
+MODULE wanndata
+  !
+  use constants
+  !
+  IMPLICIT NONE
+
+  INTEGER norb
+  INTEGER nrpt
+
+  COMPLEX(DP), ALLOCATABLE :: ham(:,:,:)
+
+  REAL(DP), ALLOCATABLE :: weight(:)
+
+  REAL(DP), ALLOCATABLE :: rvec(:,:)
+  !
+CONTAINS
+
 SUBROUTINE read_ham(seed)
 !
   USE para
@@ -61,3 +86,17 @@ SUBROUTINE read_ham(seed)
   CALL para_sync(rvec, 3, nrpt)
   !
 END SUBROUTINE
+
+SUBROUTINE finalize_wann()
+  !
+  IMPLICIT NONE
+  !
+  if (allocated(ham)) deallocate(ham)
+  if (allocated(weight)) deallocate(weight)
+  if (allocated(rvec)) deallocate(rvec)
+  !
+END SUBROUTINE
+
+
+END MODULE
+
