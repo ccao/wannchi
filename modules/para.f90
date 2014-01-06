@@ -7,17 +7,34 @@ MODULE para
   implicit none
   !
   integer inode, nnode
+  integer first_k, last_k
   !
 INTERFACE para_sync
   MODULE PROCEDURE para_sync_int0, para_sync_real0, para_sync_real1, para_sync_real2, para_sync_cmplx3
 END INTERFACE
   !
 INTERFACE para_merge
-  MODULE PROCEDURE para_merge_real0, para_merge_real1, para_merge_real2, para_merge_cmplx1, para_merge_cmplx3
+  MODULE PROCEDURE para_merge_real0, para_merge_real1, para_merge_real2, para_merge_cmplx0, para_merge_cmplx1, para_merge_cmplx3, para_merge_cmplx4
 END INTERFACE
   !
 CONTAINS
   !
+SUBROUTINE distribute_k()
+  !
+  use banddata, only : nkpt
+  !
+  implicit none
+  !
+#if defined __MPI
+  first_k=inode*nkpt/nnode+1
+  last_k=(inode+1)*nkpt/nnode
+#else
+  first_k=1
+  last_k=nkpt
+#endif
+  !
+END SUBROUTINE
+
 SUBROUTINE init_para()
   !
   use constants
@@ -135,7 +152,7 @@ SUBROUTINE para_merge_real0(dat)
   integer ierr
   !
 #if defined __MPI
-  CALL mpi_reduce(dat, tot, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, mpi_comm_world, ierr)
+  CALL mpi_allreduce(dat, tot, 1, MPI_DOUBLE_PRECISION, MPI_SUM, mpi_comm_world, ierr)
   dat=tot
 #endif
   !
@@ -149,21 +166,15 @@ SUBROUTINE para_merge_real1(dat, dat_size)
   !
   integer :: dat_size
   real(dp) :: dat(1:dat_size)
+  real(dp), allocatable :: buf(:)
   !
   integer ierr
   !
-  integer loc_size
-  real(dp), allocatable :: buffer(:)
-  !
 #if defined __MPI
-  loc_size=dat_size/nnode
-  allocate(buffer(1:loc_size))
-  !
-  buffer(:)=dat(inode*loc_size+1:(inode+1)*loc_size)
-  !
-  CALL mpi_allgather(buffer, loc_size, MPI_DOUBLE_PRECISION, dat, loc_size, MPI_DOUBLE_PRECISION, mpi_comm_world, ierr)
-  !
-  deallocate(buffer)
+  allocate(buf(1:dat_size))
+  CALL mpi_allreduce(dat, buf, dat_size, MPI_DOUBLE_PRECISION, MPI_SUM, mpi_comm_world, ierr)
+  dat(:)=buf(:)
+  deallocate(buf)
 #endif
   !
 END SUBROUTINE
@@ -179,18 +190,29 @@ SUBROUTINE para_merge_real2(dat, size1, size2)
   !
   integer ierr
   !
-  integer loc_size
-  real(dp), allocatable :: buffer(:, :)
+  real(dp), allocatable :: buf(:, :)
   !
 #if defined __MPI
-  loc_size=size2/nnode
-  allocate(buffer(1:size1, 1:loc_size))
+  allocate(buf(1:size1, 1:size2))
+  CALL mpi_allreduce(dat, buf, size1*size2, MPI_DOUBLE_PRECISION, MPI_SUM, mpi_comm_world, ierr)
+  dat(:,:)=buf(:,:)
+  deallocate(buf)
+#endif
   !
-  buffer(:,:)=dat(:, inode*loc_size+1:(inode+1)*loc_size)
+END SUBROUTINE
+
+SUBROUTINE para_merge_cmplx0(dat)
   !
-  CALL mpi_allgather(buffer, size1*loc_size, MPI_DOUBLE_PRECISION, dat, size1*loc_size, MPI_DOUBLE_PRECISION, mpi_comm_world, ierr)
+  use constants, only : dp
   !
-  deallocate(buffer)
+  implicit none
+  !
+  complex(dp) :: dat, tot
+  integer ierr
+  !
+#if defined __MPI
+  CALL mpi_allreduce(dat, tot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, mpi_comm_world, ierr)
+  dat=tot
 #endif
   !
 END SUBROUTINE
@@ -206,18 +228,13 @@ SUBROUTINE para_merge_cmplx1(dat, dat_size)
   !
   integer ierr
   !
-  integer loc_size
-  complex(dp), allocatable :: buffer(:)
+  complex(dp), allocatable :: buf(:)
   !
 #if defined __MPI
-  loc_size=dat_size/nnode
-  allocate(buffer(1:loc_size))
-  !
-  buffer(:)=dat(inode*loc_size+1:(inode+1)*loc_size)
-  !
-  CALL mpi_allgather(buffer, loc_size, MPI_DOUBLE_COMPLEX, dat, loc_size, MPI_DOUBLE_COMPLEX, mpi_comm_world, ierr)
-  !
-  deallocate(buffer)
+  allocate(buf(1:dat_size))
+  CALL mpi_allreduce(dat, buf, dat_size, MPI_DOUBLE_COMPLEX, MPI_SUM, mpi_comm_world, ierr)
+  dat(:)=buf(:)
+  deallocate(buf)
 #endif
   !
 END SUBROUTINE
@@ -231,21 +248,35 @@ SUBROUTINE para_merge_cmplx3(dat, size1, size2, size3)
   integer :: size1, size2, size3
   complex(dp) :: dat(1:size1, 1:size2, 1:size3)
   !
-  integer ierr, dat_size
+  complex(dp), allocatable :: buf(:, :, :)
   !
-  integer loc_size
-  complex(dp), allocatable :: buffer(:, :, :)
+  integer ierr
   !
 #if defined __MPI
-  dat_size=size1*size2*size3
-  loc_size=size3/nnode
-  allocate(buffer(1:size1, 1:size2, 1:loc_size))
+  allocate(buf(1:size1, 1:size2, 1:size3))
+  CALL mpi_allreduce(dat, buf, size1*size2*size3, MPI_DOUBLE_COMPLEX, MPI_SUM, mpi_comm_world, ierr)
+  dat(:,:,:)=buf(:,:,:)
+  deallocate(buf)
+#endif
   !
-  buffer(:, :, :)=dat(:, :, inode*loc_size+1:(inode+1)*loc_size)
+END SUBROUTINE
+
+SUBROUTINE para_merge_cmplx4(dat, size1, size2, size3, size4)
   !
-  CALL mpi_allgather(buffer, size1*size2*loc_size, MPI_DOUBLE_COMPLEX, dat, size1*size2*loc_size, MPI_DOUBLE_COMPLEX, mpi_comm_world, ierr)
+  use constants, only: dp
+  implicit none
   !
-  deallocate(buffer)
+  integer :: size1, size2, size3, size4
+  complex(dp) :: dat(:, :, :, :)
+  integer ierr
+  !
+  complex(dp), allocatable :: buf(:, :, :, :)
+  !
+#if defined __MPI
+  allocate(buf(1:size1, 1:size2, 1:size3, 1:size4))
+  CALL mpi_allreduce(dat, buf, size1*size2*size3*size4, MPI_DOUBLE_COMPLEX, MPI_SUM, mpi_comm_world, ierr)
+  dat(:, :, :, :)=buf(:, :, :, :)
+  deallocate(buf)
 #endif
   !
 END SUBROUTINE

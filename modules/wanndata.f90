@@ -27,7 +27,6 @@ SUBROUTINE read_ham(seed)
 !
   USE para
   USE constants
-  USE wanndata
   !
   IMPLICIT NONE
   !

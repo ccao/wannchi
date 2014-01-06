@@ -7,7 +7,6 @@ MODULE banddata
   real(dp) ef
   real(dp), allocatable :: occ(:, :)
   real(dp), allocatable :: eig(:, :)
-  complex(dp), allocatable :: xi(:, :, :, :)
   complex(dp), allocatable :: egv(:, :, :)
   real(dp), allocatable :: kvec(:, :)
   integer nbnd
@@ -24,8 +23,12 @@ SUBROUTINE init_band
   !
   allocate(occ(1:nbnd, 1:nkpt))
   allocate(eig(1:nbnd, 1:nkpt))
-  allocate(xi(1:nbnd, 1:nbnd, 1:nbnd, 1:nkpt))
+  allocate(egv(1:nbnd, 1:nbnd, 1:nkpt))
   allocate(kvec(1:3, 1:nkpt))
+  !
+  occ(:,:)=0.d0
+  eig(:,:)=0.d0
+  egv(:, :, :)=cmplx_0
   !
   do ikx=1, nkx
     do iky=1, nky

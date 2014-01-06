@@ -1,29 +1,16 @@
-<<<<<<< HEAD
-#F90=ifort
-=======
->>>>>>> New modulized version
-F90=mpif90
-F90FLAGS=-D__MPI
+include ../make.sys
 
-MKLINCLUDE=$(MKLROOT)/include
-MKLLIBS=-L$(MKLROOT)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core
-LAPACK95LIBS=$(MKLROOT)/lib/intel64/libmkl_lapack95_lp64.a
+objects = input.o flib.o  interpolate_bands.o calc_occ.o compute_chi.o output_chi.o
 
+LIBS = ../modules/mod.a
 
-<<<<<<< HEAD
-objects = constants.o para.o input.o chidata.o wanndata.o banddata.o read_ham.o interpolate_bands.o read_input.o flib.o compute_chi.o
-=======
-objects = chidata.f90  flib.f90  interpolate_bands.f90 calc_occ.f90  compute_chi.f90  input.f90
->>>>>>> New modulized version
+$(LIBS):
+	cd ../modules
+	make mod.a
+	cd ..
 
-$(objects): $.o:$.f90
-	$(F90) $(F90FLAGS) -fpp -c -I$(MKLINCULDE) $< -o $@
-
-wannchi: wannchi.f90 $(objects) 
-	$(F90) $(F90FLAGS) -fpp -o wannchi.x wannchi.f90 $(objects) -I$(MKLINCLUDE) $(LAPACK95LIB) $(MKLLIBS)
-
-wanndos: wanndos.f90 $(objects)
-	$(F90) $(F90FLAGS) -o wanndos.x wanndos.f90 $(objects) -I$(MKLINCLUDE) $(LAPACK95LIB) $(MKLLIBS)
+wannchi: wannchi.f90 $(objects) $(LIBS)
+	$(F90) $(F90FLAGS) -fpp -o wannchi.x wannchi.f90 $(objects) $(LIBS) -I$(MKLINCLUDE) -I../modules -I. $(LAPACK95LIBS) $(MKLLIBS)
 
 clean:
-	rm -rf *.o *.mod
+	rm -rf *.o *.mod *.x

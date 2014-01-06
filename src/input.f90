@@ -4,46 +4,6 @@ MODULE input
   !
   implicit none
   !
-<<<<<<< HEAD
-  integer code   ! 0: wannchi 1: wanndos
-  integer mode   ! Mode for calculation, 0 (default): plane; 1: band
-  real(dp), allocatable :: bnd_q(:, :) ! special Q-points
-  real(dp) temp  ! Temperature
-  real(dp) omega ! omega ( real axis energy )
-  real(dp) hubbard_u, hubbard_j, hubbard_v, hubbard_jp
-  integer nqseg   ! Num of q-points per seg
-  integer nqbnd   ! Num of special Q points
-  !
-  logical lrpa
-  !
-CONTAINS
-
-SUBROUTINE finalize_input()
-  !
-  implicit none
-  !
-  if(allocated(bnd_q)) deallocate(bnd_q)
-  !
-END SUBROUTINE
-
-SUBROUTINE get_qvec(qv, iq)
-  !
-  implicit none
-  !
-  integer iq
-  real(dp) qv(1:3)
-  integer iseg, iqb
-  !
-  iqb=mod(iq-1,nqbnd)
-  iseg=(iq-1-iqb)/nqbnd
-  !
-  qv(:)=bnd_q(iseg+1,:)+iqb*(bnd_q(iseg+2,:)-bnd_q(iseg+1,:))/nqbnd
-  !
-END SUBROUTINE
-
-END MODULE
-
-=======
   integer nqpt
   real(dp), allocatable :: qvec(:, :)
   real(dp) temp, omega, eps
@@ -88,8 +48,6 @@ CONTAINS
     read(fin, *) omega
     read(fin, *) eps
     read(fin, *) mode
-    !
-    nkpt=nkx*nky*nkz
   endif
   !
   CALL para_sync(ef)
@@ -100,7 +58,8 @@ CONTAINS
   CALL para_sync(omega)
   CALL para_sync(eps)
   CALL para_sync(mode)
-  CALL para_sync(nkpt)
+  !
+  nkpt=nkx*nky*nkz
   !
   if (temp<0) temp=0.d0
   if (eps>eps4.or.eps<eps9) eps=eps4
@@ -112,7 +71,9 @@ CONTAINS
       if (inode.eq.0) read(fin, *) qvec(:, 1)
       CALL para_sync(qvec, 3, nqpt)
     case (1)
-      read(fin, *) nqsec, nq_per_sec
+      if (inode.eq.0) read(fin, *) nqsec, nq_per_sec
+      CALL para_sync(nqsec)
+      CALL para_sync(nq_per_sec)
       nqpt=(nqsec-1)*nq_per_sec+1
       allocate(qbnd_vec(1:3, 1:nqsec))
       allocate(qvec(1:3, nqpt))
@@ -166,4 +127,3 @@ CONTAINS
  END SUBROUTINE
   !
 END MODULE
->>>>>>> New modulized version

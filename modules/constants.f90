@@ -12,13 +12,8 @@ MODULE constants
   integer, parameter :: stdout=6
   integer, parameter :: fin=10
   integer, parameter :: fout=11
-<<<<<<< HEAD:src/constants.f90
-  real(dp), parameter :: eps=1.0d-6
-  real(dp), parameter :: eps4=1.0d-4
-=======
   real(dp), parameter :: eps4=1.0d-4
   real(dp), parameter :: eps6=1.0d-6
   real(dp), parameter :: eps9=1.0d-9
->>>>>>> New modulized version:modules/constants.f90
   !
 END MODULE

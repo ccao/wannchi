@@ -4,8 +4,6 @@ MODULE chidata
   !
   implicit none
   !
-  integer nqx, nqy, nqz
-  integer nqpt
   complex(dp), allocatable :: chi_loc(:, :, :, :)
   complex(dp), allocatable :: chi_bare(:, :, :, :)
   complex(dp), allocatable :: chi_rpa(:, :, :, :)

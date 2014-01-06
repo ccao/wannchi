@@ -1,74 +1,10 @@
-SUBROUTINE compute_chi_bare(qv)
-  !
-<<<<<<< HEAD
-  use constants, only: dp, cmplx_0, cmplx_i, eps, eps4
-  use banddata,  only: eig, egv, nkx, nky, nkz, nkpt, nbnd, ef
-  use input,     only: temp, omega
-  use chidata,   only: chi_loc
-=======
-  use constants, only : dp, eps9
-  use banddata, only : kvec, nbnd, occ, eig, xi
-  use input, only : omega, eps
->>>>>>> New modulized version
-  !
-  implicit none
-  !
-  real(dp) qv(1:3)
-  !
-<<<<<<< HEAD
-  !
-  real(dp) ikv(1:3), jkv(1:3)   !  k & k+q
-  !
-  real(dp) fermi_dirac
-  !
-  integer ii, jj, kk, ll
-  integer io, jo, ik, jk
-  complex(dp) fact
-  real(dp) occ_io, occ_jo
-  !
-  if (.not.allocated(chi_loc)) allocate(chi_loc(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-=======
-  real(dp) ikv(1:3), jkv(1:3)
-  !
-  integer io, jo, ik, jk
-  integer ii, jj, kk, ll
-  complex(dp) fact
-  !
-  if (.not. allocated(chi_loc)) then
-    allocate(chi_loc(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-    chi_loc(:, :, :, :) = cmplx_0
-  endif
-  !
-  do ik=1, nkpt
-    ikv(:)=kvec(:, ik)
-    jkv(:)=ikv(:)+qv(:)
-    jk=kpt_index(jkv)
-    !
-    do io=1, nbnd
-      do jo=1, nbnd
-        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
-          do ii=1, nbnd
-            do jj=1, nbnd
-              do kk=1, nbnd
-                do ll=1, nbnd
-                  chi_loc(ii, jj, kk, ll) = (occ(jo, jk)-occ(io-ik))*xi(ii, kk, io, ik)*xi(ll, jj, jo, jk)/(omega+eig(jo, jk)-eig(io, ik)+cmplx_i*eps)
-                enddo
-              enddo
-            enddo
-          enddo ! ii
-        endif 
-      enddo ! jo
-    enddo ! io
-  enddo ! ik
-  chi_loc(:, :, :, :)=-chi_loc(:, :, :, :)/nkpt
-  !
-END SUBROUTINE
-
 SUBROUTINE compute_chi_bare_diag(chi, qv)
   !
-  use constants, only : dp, eps9
-  use banddata, only : kvec, nbnd, occ, eig, xi
-  use input, only : omega, eps
+  use constants, only : dp, eps9, cmplx_0, cmplx_i, stdout
+  use para,      only : first_k, last_k, para_merge, inode
+  use banddata,  only : kvec, nbnd, occ, eig, egv, nkpt
+  use input,     only : omega, eps
+  use chidata,   only : chi_loc
   !
   implicit none
   !
@@ -80,34 +16,28 @@ SUBROUTINE compute_chi_bare_diag(chi, qv)
   integer io, jo, ik, jk
   integer ii, jj
   complex(dp) fact
->>>>>>> New modulized version
   !
-  chi_loc(:,:,:,:)=cmplx_0
+  integer kpt_index
   !
-  do ik=1, nkpt
+  do ik=first_k, last_k
     ikv(:)=kvec(:, ik)
     jkv(:)=ikv(:)+qv(:)
     jk=kpt_index(jkv)
     !
     do io=1, nbnd
-      !
-      occ_io=fermi_dirac(eig(io, ik)-ef, temp)
-      !
       do jo=1, nbnd
-<<<<<<< HEAD
         !
-        occ_jo=fermi_dirac(eig(jo, jk)-ef, temp)
-        !
-        if (abs(occ_io-occ_jo)>eps) then
+        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
+          !
+          chi_tmp = cmplx_0
           do ii=1, nbnd
             do jj=1, nbnd
-              do kk=1, nbnd
-                do ll=1, nbnd
-                  chi_loc(ii, jj, kk, ll) = chi_loc(ii, jj, kk, ll) - (occ_jo-occ_io)*CONJG(egv(ii, io, ik))*egv(jj, jo, jk)*egv(kk, io, ik)*CONJG(egv(ll, jo, jk))/(omega+eig(jo, jk)-eig(io, ik)+eps4*cmplx_i)/nkpt
-                enddo  ! ll
-              enddo  ! kk
-            enddo  ! jj
-          enddo  ! ii
+              chi_tmp = chi_tmp+egv(ii, io, ik)*CONJG(egv(jj, io, ik))*egv(jj, jo, jk)*CONJG(egv(ii, jo, jk))
+            enddo
+          enddo ! ii
+          !
+          chi=chi-chi_tmp*(occ(jo, jk)-occ(io, ik))/(omega+eig(jo, jk)-eig(io, ik)+cmplx_i*eps)
+          !
         endif
         !
       enddo ! jo
@@ -115,122 +45,9 @@ SUBROUTINE compute_chi_bare_diag(chi, qv)
     !
   enddo ! ik
   !
-END SUBROUTINE
-
-SUBROUTINE compute_U_mat
+  chi=chi/nkpt
   !
-  use constants, only: dp
-  use banddata,  only: nbnd
-  use input,     only: hubbard_u, hubbard_j, hubbard_v, hubbard_jp
-  use chidata,   only: u_mat
-  !
-  implicit none
-  !
-  integer ii, jj
-  !
-  if (.not.allocated(u_mat)) allocate(u_mat(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-  u_mat(:,:,:,:)=0.d0
-  !
-  do ii=1, nbnd
-    u_mat(ii, ii, ii, ii)=hubbard_u
-    do jj=1, nbnd
-      u_mat(ii, ii, jj, jj)=hubbard_j/2.d0
-      u_mat(ii, jj, ii, jj)=hubbard_j/4.d0+hubbard_v
-      u_mat(jj, ii, ii, jj)=hubbard_jp
-    enddo
-  enddo
-  !
-END SUBROUTINE
-
-SUBROUTINE compute_chi_rpa(qv)
-  !
-  use para, only: inode
-  use constants, only: dp, cmplx_0, cmplx_i
-  use banddata,  only: nbnd
-  use chidata,   only: chi_loc, chi_rpa, u_mat, u_chi, chi_tmp
-  !
-  implicit none
-  !
-  real(dp) qv(1:3)
-  !
-  complex(dp), allocatable :: chi_new(:, :, :, :)
-  !
-  integer i_loop, n_loop
-  integer ii
-  logical converged
-  !
-  n_loop = 200
-  !
-  if (.not.allocated(chi_rpa)) allocate(chi_rpa(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-  if (.not.allocated(u_chi))  allocate(u_chi(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-  allocate(chi_new(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-  if (.not.allocated(chi_tmp)) allocate(chi_tmp(1:nbnd, 1:nbnd, 1:nbnd, 1:nbnd))
-  !
-  CALL compute_chi_bare(qv)
-  !
-  chi_rpa=chi_loc
-  !
-  CALL matrix_multiply(u_chi, u_mat, chi_loc, nbnd)
-  !
-  do i_loop=1, n_loop
-    CALL matrix_multiply(chi_tmp, chi_rpa, u_chi, nbnd)
-    chi_new=chi_loc+chi_tmp
-    chi_tmp=chi_new-chi_rpa
-    if (converged) exit
-    chi_rpa=chi_new
-  enddo
-  !
-  deallocate(chi_new)
-  !
-END SUBROUTINE
-
-SUBROUTINE compute_chi_diag(chi, qv)
-  !
-  use constants, only: dp, cmplx_0
-  use banddata,  only: nbnd
-  use chidata,   only: chi_loc, chi_rpa
-  use input,     only: lrpa
-  !
-  implicit none
-  !
-  complex(dp) chi
-  !
-  real(dp) qv(1:3)
-  !
-  integer ii, jj
-  !
-  chi=cmplx_0
-  !
-  if (lrpa) then
-    CALL compute_chi_rpa(qv)
-  else
-    CALL compute_chi_bare(qv)
-  endif
-  !
-  do ii=1, nbnd
-    do jj=1, nbnd
-      if(lrpa) then
-        chi=chi+chi_rpa(ii, ii, jj, jj)
-      else
-        chi=chi+chi_loc(ii, ii, jj, jj)
-      endif
-    enddo
-  enddo
-=======
-        chi_tmp = cmplx_0
-        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
-          do ii=1, nbnd
-            do jj=1, nbnd
-              chi_tmp = chi_tmp+xi(ii, jj, io, ik)*xi(jj, ii, jo, jk)
-            enddo
-          enddo ! ii
-        endif
-        chi=chi+chi_tmp*(occ(jo, jk)-occ(io, ik))/(omega+eig(jo, jk)-eig(io, ik)+cmplx_i*eps)
-      enddo ! jo
-    enddo ! io
-  enddo ! ik
-  chi=-chi/nkpt
->>>>>>> New modulized version
+  CALL para_merge(chi)
   !
 END SUBROUTINE
 

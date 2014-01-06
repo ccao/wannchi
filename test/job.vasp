@@ -21,8 +21,9 @@ export GOTO_NUM_THREADS=1
 
 ## vasp 
 #
-exe=../src/wannchi.x-mpi
+exe=../src/wannchi.x
 
-mpirun -n ${NP} ${exe} > test_32_mpi.log
+mpirun -n ${NP} ${exe} > test_${NP}.log
 
 #${exe} > test.log
+
