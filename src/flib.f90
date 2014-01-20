@@ -1,24 +1,18 @@
 INTEGER FUNCTION kpt_index(kv)
   !
-  use banddata, only : kvec, nkpt
+  use banddata, only : nkx, nky, nkz
   use constants, only : dp, eps6
   !
   implicit none
   !
   real(dp) kv(1:3)
-  integer ik
-  logical found
-  real(dp) dk(1:3)
+  integer ik, ikx, iky, ikz
   !
-  do ik=1, nkpt
-    dk(:)=(kv(:)-kvec(:, ik))-nint(kv(:)-kvec(:, ik))
-    if ( abs(dk(1))<eps6.and.abs(dk(2))<eps6.and.abs(dk(3))<eps6 ) then
-      kpt_index=ik
-      return
-    endif
-  enddo
+  ikx=nint((kv(1)-floor(kv(1)))*nkx)
+  iky=nint((kv(2)-floor(kv(2)))*nky)
+  ikz=nint((kv(3)-floor(kv(3)))*nkz)
   !
-  kpt_index=-1
+  kpt_index=ikz*nkx*nky+iky*nkx+ikx+1
   return
   !
 END FUNCTION
