@@ -27,7 +27,7 @@ SUBROUTINE compute_chi_bare_diag(chi, qv)
     do io=1, nbnd
       do jo=1, nbnd
         !
-        if (abs(occ(io, ik)-occ(jo, jk)>eps9)) then
+        if (abs(occ(io, ik)-occ(jo, jk))>eps9) then
           !
           chi_tmp = cmplx_0
           do ii=1, nbnd
