@@ -1,10 +1,9 @@
 SUBROUTINE compute_chi_bare_diag(chi, qv)
   !
   use constants, only : dp, eps9, cmplx_0, cmplx_i, stdout
-  use para,      only : first_k, last_k, para_merge, inode
+  use para,      only : first_k, last_k, para_merge0
   use banddata,  only : kvec, nbnd, occ, eig, egv, nkpt
   use input,     only : omega, eps
-  use chidata,   only : chi_loc
   !
   implicit none
   !
@@ -15,7 +14,6 @@ SUBROUTINE compute_chi_bare_diag(chi, qv)
   !
   integer io, jo, ik, jk
   integer ii, jj
-  complex(dp) fact
   !
   integer kpt_index
   !
@@ -47,7 +45,7 @@ SUBROUTINE compute_chi_bare_diag(chi, qv)
   !
   chi=chi/nkpt
   !
-  CALL para_merge(chi)
+  CALL para_merge0(chi)
   !
 END SUBROUTINE
 

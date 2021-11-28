@@ -16,17 +16,14 @@ CONTAINS
   !************ INPUT FILE *************
   !** file name: wannchi.inp
   !line 1: seed name
-  !line 2: fermi level
+  !line 2: ef T omega epsilon
   !line 3: nqx nqy nqz
-  !line 4: temperature
-  !line 5: omega
-  !line 6: epsilon
-  !line 7: mode
-  !line 8: ...
+  !line 4: mode
+  !line 5: ...
   !*************************************
   !
   use constants, only : dp, eps4, fin
-  use para
+  use para,      only : inode, para_sync_int, para_sync_real
   use banddata,  only : nkpt, nkx, nky, nkz, ef
   !
   implicit none
@@ -35,29 +32,32 @@ CONTAINS
   integer nqsec, nq_per_sec, iqsec, iq
   integer iqx, iqy, iqz
   real(dp), allocatable :: qbnd_vec(:, :)
-  character dir
+  real(dp), dimension(4) :: tt_real
+  integer, dimension(4)  :: tt_int
+  !character dir
   !
   if (inode.eq.0) then
     open(unit=fin, file="wannchi.inp")
     !
     read(fin, *) seed
     !
-    read(fin, *) ef
-    read(fin, *) nkx, nky, nkz
-    read(fin, *) temp
-    read(fin, *) omega
-    read(fin, *) eps
+    read(fin, *) tt_real(1:4)
+    read(fin, *) tt_int(1:3)
     read(fin, *) mode
   endif
   !
-  CALL para_sync(ef)
-  CALL para_sync(nkx)
-  CALL para_sync(nky)
-  CALL para_sync(nkz)
-  CALL para_sync(temp)
-  CALL para_sync(omega)
-  CALL para_sync(eps)
-  CALL para_sync(mode)
+  call para_sync_int(tt_int, 4)
+  call para_sync_real(tt_real, 4)
+  !
+  ef=tt_real(1)
+  temp=tt_real(2)
+  omega=tt_real(3)
+  eps=tt_real(4)
+
+  nkx=tt_int(1)
+  nky=tt_int(2)
+  nkz=tt_int(3)
+  mode=tt_int(4)
   !
   nkpt=nkx*nky*nkz
   !
@@ -69,11 +69,12 @@ CONTAINS
       nqpt=1
       allocate(qvec(1:3, 1:1))
       if (inode.eq.0) read(fin, *) qvec(:, 1)
-      CALL para_sync(qvec, 3, nqpt)
+      call para_sync_real(qvec, 3*nqpt)
     case (1)
-      if (inode.eq.0) read(fin, *) nqsec, nq_per_sec
-      CALL para_sync(nqsec)
-      CALL para_sync(nq_per_sec)
+      if (inode.eq.0) read(fin, *) tt_int(1:2)
+      call para_sync_int(tt_int, 2)
+      nqsec=tt_int(1)
+      nq_per_sec=tt_int(2)
       nqpt=(nqsec-1)*nq_per_sec+1
       allocate(qbnd_vec(1:3, 1:nqsec))
       allocate(qvec(1:3, nqpt))
@@ -89,7 +90,7 @@ CONTAINS
         qvec(:, nqpt)=qbnd_vec(:, nqsec)
         deallocate(qbnd_vec)
       endif
-      CALL para_sync(qvec, 3, nqpt)
+      call para_sync_real(qvec, 3*nqpt)
     case (2)
       nqpt=nkx*nky
       allocate(qvec(1:3, 1:nqpt))

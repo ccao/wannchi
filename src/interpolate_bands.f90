@@ -2,7 +2,7 @@ include 'lapack.f90'
 
 SUBROUTINE interpolate_bands
   !
-  use para,      only : inode, nnode, para_merge, first_k, last_k
+  use para,      only : inode, nnode, first_k, last_k, para_merge_real, para_merge_cmplx
   use lapack95,  only : heev
   use constants, only : dp, twopi, cmplx_0, cmplx_i, stdout
   use wanndata,  only : rvec, ham, weight, nrpt, norb
@@ -45,9 +45,9 @@ SUBROUTINE interpolate_bands
     !
   enddo ! ik
   !
-  CALL para_merge(occ, norb, nkpt)
-  CALL para_merge(egv, norb, norb, nkpt)
-  CALL para_merge(eig, norb, nkpt)
+  call para_merge_real(occ, norb*nkpt)
+  call para_merge_real(eig, norb*nkpt)
+  call para_merge_cmplx(egv, norb*norb*nkpt)
   !
   if(inode.eq.0) then
     write(stdout, *) " # Done..."

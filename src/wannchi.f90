@@ -1,9 +1,9 @@
 PROGRAM wannchi
   !
   use constants,only : cmplx_0, stdout, dp, fout
-  use para,     only : init_para, inode, distribute_k, para_merge, finalize_para
+  use para,     only : init_para, inode, distribute_k, finalize_para
   use wanndata, only : read_ham, norb, finalize_wann
-  use banddata, only : nkpt, nbnd, init_band, finalize_band
+  use banddata, only : nbnd, init_band, finalize_band
   use input,    only : read_input, seed, qvec, nqpt
   use chidata,  only : finalize_chi
   !

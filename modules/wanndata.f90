@@ -25,13 +25,14 @@ CONTAINS
 
 SUBROUTINE read_ham(seed)
 !
-  USE para
+  USE para,      only: para_sync_int, para_sync_real, para_sync_cmplx, inode
   USE constants
   !
   IMPLICIT NONE
   !
   CHARACTER(len=80) seed
-  INTEGER irpt, iorb, jorb, t1, t2, t3, t4, t5
+  INTEGER irpt, iorb, jorb
+  integer, dimension(5) :: tt
   INTEGER, ALLOCATABLE :: wt(:)
   REAL(DP) a, b
   !
@@ -41,22 +42,23 @@ SUBROUTINE read_ham(seed)
     open(unit=fin, file=trim(seed)//"_hr.dat")
     !
     read(fin, *)
-    read(fin, *) norb
-    read(fin, *) nrpt
+    read(fin, *) tt(1) ! norb
+    read(fin, *) tt(2) ! nrpt
     !
     write(stdout, *) " #  Dimensions:"
-    write(stdout, *) "    # of orbitals:", norb
-    write(stdout, *) "    # of real-space grid:", nrpt
   endif
   !
-  CALL para_sync(norb)
-  CALL para_sync(nrpt)
+  CALL para_sync_int(tt, 2)
+  norb=tt(1)
+  nrpt=tt(2)
   !
   allocate(ham(1:norb, 1:norb, 1:nrpt))
   allocate(weight(1:nrpt))
   allocate(rvec(1:3, 1:nrpt))
   !
   if (inode.eq.0) then
+    write(stdout, *) "    # of orbitals:", norb
+    write(stdout, *) "    # of real-space grid:", nrpt
     allocate(wt(1:nrpt))
     read(fin, '(15I5)') (wt(irpt),irpt=1,nrpt)
     weight(:)=wt(:)
@@ -65,13 +67,11 @@ SUBROUTINE read_ham(seed)
     do irpt=1, nrpt
       do iorb=1, norb
         do jorb=1, norb
-          read(fin, *) t1, t2, t3, t4, t5, a, b
+          read(fin, *) tt, a, b
           if ((iorb.eq.1).and.(jorb.eq.1)) then
-            rvec(1, irpt)=t1
-            rvec(2, irpt)=t2
-            rvec(3, irpt)=t3
+            rvec(:, irpt)=tt(1:3)
           endif
-          ham(iorb, jorb, irpt)=CMPLX(a,b)
+          ham(iorb, jorb, irpt)=CMPLX(a, b, KIND=dp)
         enddo
       enddo
     enddo
@@ -80,9 +80,9 @@ SUBROUTINE read_ham(seed)
     write(stdout, *) " # Done."
   endif
   !
-  CALL para_sync(ham, norb, norb, nrpt)
-  CALL para_sync(weight, nrpt)
-  CALL para_sync(rvec, 3, nrpt)
+  CALL para_sync_cmplx(ham, norb*norb*nrpt)
+  CALL para_sync_real(weight, nrpt)
+  CALL para_sync_real(rvec, 3*nrpt)
   !
 END SUBROUTINE
 
