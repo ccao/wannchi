@@ -6,63 +6,99 @@ MODULE input
   !
   integer nqpt
   real(dp), allocatable :: qvec(:, :)
-  real(dp) temp, omega, eps
+  real(dp) mu, beta, omega, eps
+  integer  nkx, nky, nkz
+  integer  nen
+  real(dp), dimension(:), allocatable :: emesh
+  !
+  integer level
+  integer mode
+  logical doFullMat
+  logical doRPA
+  logical doCorr
+  !
   character(len=80) seed
   !
 CONTAINS
   !
- SUBROUTINE read_input
+ SUBROUTINE read_input(codename)
   !
   !************ INPUT FILE *************
   !** file name: wannchi.inp
-  !line 1: seed name
-  !line 2: ef T omega epsilon
-  !line 3: nqx nqy nqz
-  !line 4: mode
-  !line 5: ...
+  !line 1: seed name       ! seed name
+  !line 2: ef beta omega eps ! If this is susceptibility calculation
+  !line 2: emin emax ne eps  ! If this is band calculation
+  !line 3: nkx nky nkz     ! If spectral calculation, no use
+  !line 4: mode            ! Calculation mode
+  !  mode=0 : single point calculation
+  !  mode=1 : line-mode (band k-path)
+  !  mode=2 : plane-mode
+  !  mode=3 : whole BZ
+  !  Above are diagonal trace only
+  !  mode+10 : Full matrix
+  !  mode+20 : with self-energy
+  !  mode+30 : RPA
+  !line 5.. N : depend on mode%10
   !*************************************
   !
   use constants, only : dp, eps4, fin
   use para,      only : inode, para_sync_int, para_sync_real
-  use banddata,  only : nkpt, nkx, nky, nkz, ef
   !
   implicit none
   !
-  integer mode
+  character(*) codename
   integer nqsec, nq_per_sec, iqsec, iq
   integer iqx, iqy, iqz
   real(dp), allocatable :: qbnd_vec(:, :)
-  real(dp), dimension(4) :: tt_real
-  integer, dimension(4)  :: tt_int
+  real(dp), dimension(8) :: tt_real
+  integer, dimension(2) :: tt_int
   !character dir
   !
   if (inode.eq.0) then
-    open(unit=fin, file="wannchi.inp")
+    open(unit=fin, file=trim(codename)//".inp")
     !
     read(fin, *) seed
     !
     read(fin, *) tt_real(1:4)
-    read(fin, *) tt_int(1:3)
-    read(fin, *) mode
+    read(fin, *) tt_real(5:7)
+    read(fin, *) tt_real(8)
   endif
   !
-  call para_sync_int(tt_int, 4)
-  call para_sync_real(tt_real, 4)
+  call para_sync_real(tt_real, 8)
   !
-  ef=tt_real(1)
-  temp=tt_real(2)
-  omega=tt_real(3)
+  if (codename=='wannchi') then
+    mu=tt_real(1)
+    beta=tt_real(2)
+    omega=tt_real(3)
+  else
+    nen=nint(tt_real(3))
+    allocate(emesh(nen))
+    do iq=1, nen
+      emesh(iq)=tt_real(1)+(tt_real(2)-tt_real(1))*(iq-1)/(nen-1)
+    enddo
+  endif
   eps=tt_real(4)
-
-  nkx=tt_int(1)
-  nky=tt_int(2)
-  nkz=tt_int(3)
-  mode=tt_int(4)
+  nkx=nint(tt_real(5))
+  nky=nint(tt_real(6))
+  nkz=nint(tt_real(7))
+  mode=nint(tt_real(8))
+  level=mode/10
+  mode=mod(mode,10)
   !
-  nkpt=nkx*nky*nkz
-  !
-  if (temp<0) temp=0.d0
+  if (beta<0) beta=1.d7
   if (eps>eps4.or.eps<eps9) eps=eps4
+  !
+  doFullMat=.false.
+  doCorr=.false.
+  doRPA=.false.
+  select case (level)
+    case (1)
+      doFullMat=.true.
+    case (2)
+      doCorr=.true.
+    case (3)
+      doRPA=.true.
+  end select
   !
   select case (mode)
     case (0)
@@ -123,7 +159,8 @@ CONTAINS
   !
   implicit none
   !
-  deallocate(qvec)
+  if (allocated(qvec)) deallocate(qvec)
+  if (allocated(emesh)) deallocate(emesh)
   !
  END SUBROUTINE
   !

@@ -1,48 +1,41 @@
 MODULE para
   !
-  !use mpi
+  use mpi
   !
   implicit none
   !
   integer inode, nnode
-  integer first_k, last_k
+  integer first_idx, last_idx
   !
   interface para_merge0
     module procedure para_merge_cmplx0
   end interface
   !
-!INTERFACE para_sync
-!  MODULE PROCEDURE para_sync_int0, para_sync_real0, para_sync_real1, para_sync_cmplx1, para_sync_real2, para_sync_cmplx3
-!END INTERFACE
-  !
-!INTERFACE para_merge
-!  MODULE PROCEDURE para_merge_real0, para_merge_real1, para_merge_real2, para_merge_cmplx0, para_merge_cmplx1, &
-!    para_merge_cmplx3, para_merge_cmplx4
-!END INTERFACE
-  !
 CONTAINS
   !
-SUBROUTINE distribute_k()
-  !
-  use banddata, only : nkpt
+SUBROUTINE distribute_calc(nidx)
   !
   implicit none
   !
+  integer nidx
+  !
 #if defined __MPI
-  first_k=inode*nkpt/nnode+1
-  last_k=(inode+1)*nkpt/nnode
+  first_idx=inode*nidx/nnode+1
+  last_idx=(inode+1)*nidx/nnode
 #else
-  first_k=1
-  last_k=nkpt
+  first_idx=1
+  last_idx=nidx
 #endif
   !
 END SUBROUTINE
 
-SUBROUTINE init_para()
+SUBROUTINE init_para(codename)
   !
   use constants
   !
   implicit none
+  !
+  character(*) codename
   !
 #if defined __MPI
   integer ierr
@@ -52,11 +45,11 @@ SUBROUTINE init_para()
   CALL mpi_comm_rank(mpi_comm_world, inode, ierr)
   CALL mpi_comm_size(mpi_comm_world, nnode, ierr)
   !
-  if (inode.eq.0) write(stdout, *) "# WannChi running on ", nnode, " nodes..."
+  if (inode.eq.0) write(stdout, *) trim(codename)//" running on ", nnode, " nodes..."
 #else
   inode=0
   nnode=1
-  write(stdout, *) "# WannChi serial ..."
+  write(stdout, *) trim(codename)//" serial ..."
 #endif
   !
 END SUBROUTINE

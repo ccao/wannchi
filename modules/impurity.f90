@@ -42,8 +42,53 @@ MODULE impurity
   complex(dp), dimension(:, :), allocatable :: sigma
   ! Actual self energy
   !
+  !!!!!! REAL FREQUENCY ONLY
+  !
+  !real(dp), dimension(:), allocatable :: omega_r
+  !real(dp), dimension(:, :), allocatable :: scoeff
+  !
   contains
   !
+  subroutine interpolate_sigma(sigpack, w)
+    !
+    implicit none
+    !
+    complex(dp), dimension(ncol) :: sigpack
+    complex(dp) :: w
+    !
+    integer low, high, mid
+    real(dp) :: w0, w1, w2
+    w0=real(w, KIND=dp)
+    !
+    if (w0>real(omega(nfreq), KIND=dp).or.w0<real(omega(1), KIND=dp)) then
+      sigpack=cmplx_0
+    else
+      low=1
+      high=nfreq
+      do while((high-low)>1)
+        mid=(high+low)/2
+        if (w0>real(omega(mid), KIND=dp)) then
+          low=mid
+        elseif (w0<real(omega(mid), KIND=dp)) then
+          high=mid
+        else
+          high=mid
+          low=mid
+        endif
+      enddo
+      !
+      if (high.eq.low) then
+        sigpack(:)=sigma(:, high)
+      else
+        w1=real(omega(low), KIND=dp)
+        w2=real(omega(high), KIND=dp)
+        sigpack(:)=((w0-w1)*sigma(:, low)+(w2-w0)*sigma(:, high))/(w2-w1)
+      endif
+      !
+    endif
+    !
+  end subroutine
+
   subroutine restore_lattice(siglat, sigpack)
     !
     implicit NONE
@@ -255,5 +300,5 @@ MODULE impurity
     enddo
     !
   end subroutine
-  !
+  
 END MODULE

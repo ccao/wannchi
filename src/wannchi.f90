@@ -4,7 +4,7 @@ PROGRAM wannchi
   use para,     only : init_para, inode, distribute_k, finalize_para
   use wanndata, only : read_ham, norb, finalize_wann
   use banddata, only : nbnd, init_band, finalize_band
-  use input,    only : read_input, seed, qvec, nqpt
+  use input,    only : read_input, seed, qvec, nqpt, nkpt
   use chidata,  only : finalize_chi
   !
   implicit none
@@ -21,7 +21,7 @@ PROGRAM wannchi
   !
   CALL init_band
   !
-  CALL distribute_k
+  CALL distribute_k(nkpt)
   !
   CALL interpolate_bands
   !

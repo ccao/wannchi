@@ -14,6 +14,7 @@ MODULE wanndata
 
   INTEGER norb
   INTEGER nrpt
+  INTEGER r000 ! This is the on-site
 
   COMPLEX(DP), ALLOCATABLE :: ham(:,:,:)
 
@@ -22,6 +23,21 @@ MODULE wanndata
   REAL(DP), ALLOCATABLE :: rvec(:,:)
   !
 CONTAINS
+
+SUBROUTINE ham_shift_ef(mu)
+  !
+  USE constants
+  implicit none
+  !
+  real(dp) :: mu
+  !
+  integer ii
+  !
+  do ii=1, norb
+    ham(ii, ii, r000) = ham(ii, ii, r000)-mu
+  enddo
+  !
+END SUBROUTINE
 
 SUBROUTINE read_ham(seed)
 !
@@ -83,6 +99,10 @@ SUBROUTINE read_ham(seed)
   CALL para_sync_cmplx(ham, norb*norb*nrpt)
   CALL para_sync_real(weight, nrpt)
   CALL para_sync_real(rvec, 3*nrpt)
+  !
+  do irpt=1, nrpt
+    if (sum(rvec(:, irpt)**2)<eps4) r000=irpt
+  enddo
   !
 END SUBROUTINE
 

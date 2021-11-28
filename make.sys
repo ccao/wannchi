@@ -1,0 +1,29 @@
+.SUFFIXES :
+.SUFFIXES : .o .f90 .c
+
+.f90.o:
+	$(F90) $(F90FLAGS) -fpp -c $(INCLUDES) $<
+
+.c.o:
+	$(CC) -c $(CFLAGS) $<
+
+CC=icc
+
+
+F90=mpif90
+F90FLAGS=-msse3 -D__MPI -D_INTEL # -D__SINGLE_PRECISION
+
+INCLUDES=-I$(MKLINCLUDE) -I../modules -I. -I$(MKLROOT)/include/intel64/lp64
+
+MKLINCLUDE=$(MKLROOT)/include 
+MKLLIBS=-L$(MKLROOT)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core
+
+LAPACKLIBS=$(MKLLIBS)
+LAPACK95LIBS=$(MKLROOT)/lib/intel64/libmkl_lapack95_lp64.a 
+
+
+AR             = ar
+ARFLAGS        = ruv
+
+RANLIB         = ranlib
+
