@@ -1,7 +1,7 @@
 SUBROUTINE output_header(fd)
   !
   use constants, only : dp
-  use input,     only : emesh, nen, nqpt, qvec, mode, nqsec, xq, xlabel, bcell
+  use input,     only : emesh, nen, nqpt, qvec, mode, nqsec, xq, xlabel
   implicit none
   !
   integer fd

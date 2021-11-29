@@ -4,7 +4,7 @@ PROGRAM wannband
   use para,     only : init_para, inode, distribute_calc, finalize_para, first_idx, last_idx, para_merge_real
   use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
   use input,    only : read_input, seed, qvec, nqpt, emesh, nen, level, eps, finalize_input
-  use impurity, only : sinf, fulldim, restore_lattice, basis_map, init_impurity
+  use impurity, only : restore_lattice, init_impurity
   !
   implicit none
   !

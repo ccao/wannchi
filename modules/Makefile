@@ -1,6 +1,6 @@
 include ../make.sys
 
-objects = constants.o banddata.o chidata.o para.o wanndata.o impurity.o linalgwrap.o
+objects = constants.o banddata.o chidata.o para.o wanndata.o impurity.o linalgwrap.o symmetry.o
 
 mod.a: $(objects)
 	$(AR) $(ARFLAGS) $@ $?
