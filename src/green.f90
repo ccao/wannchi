@@ -49,6 +49,7 @@ END SUBROUTINE
 SUBROUTINE calc_g0(gf, hk, w, ndim, inv)
   !
   use constants,       only: dp
+  use linalgwrap,      only: invmat
   !
   implicit none
   !
@@ -58,10 +59,6 @@ SUBROUTINE calc_g0(gf, hk, w, ndim, inv)
   logical :: inv ! if true, gf contains G^-1 instead of G
   !
   integer ii
-  integer ipiv(ndim)
-  complex(dp), dimension(ndim) :: work
-  !
-  !if (.not.present(inv)) inv=.false.
   !
   gf(:,:)=-hk(:,:)
   do ii=1, ndim
@@ -69,8 +66,7 @@ SUBROUTINE calc_g0(gf, hk, w, ndim, inv)
   enddo
   !
   if (.not.inv) then
-    call zgetrf(ndim, ndim, gf, ndim, ipiv, ii)
-    call zgetri(ndim, gf, ndim, ipiv, work, ndim, ii)
+    call invmat(gf, ndim)
   endif
   !
 END SUBROUTINE
@@ -80,6 +76,7 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
   use constants,        only: dp
   use wanndata,         only: norb
   use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, ismatsubara, interpolate_sigma
+  use linalgwrap,       only: invmat
   !
   implicit none
   !
@@ -90,10 +87,6 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
   integer ii, jj
   complex(dp), dimension(ncol) :: sigpack
   complex(dp), dimension(fulldim, fulldim) :: sigfull
-  integer, dimension(norb)     :: ipiv
-  complex(dp), dimension(norb) :: work
-  !
-  !if (.not.present(inv)) inv=.false.
   !
   if (ismatsubara) then
     write(*, *) "!!! FATAL: self energy is matsubara!"
@@ -115,8 +108,7 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
   enddo
   !
   if (.not. inv) then
-    call zgetrf(norb, norb, gf, norb, ipiv, ii)
-    call zgetri(norb, gf, norb, ipiv, work, norb, ii)
+    call invmat(gf, norb)
   endif
   !
 END SUBROUTINE
@@ -126,6 +118,7 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   use constants,        only: dp, cmplx_0
   use wanndata,         only: norb
   use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, omega, ismatsubara
+  use linalgwrap,       only: invmat
   !
   implicit none
   !
@@ -136,10 +129,6 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   integer ii, jj
   complex(dp), dimension(ncol) :: sigpack
   complex(dp), dimension(fulldim, fulldim) :: sigfull
-  integer, dimension(norb)     :: ipiv
-  complex(dp), dimension(norb) :: work
-  !
-  !if (.not.present(inv)) inv=.false.
   !
   if (.not.ismatsubara) then
     write(*, *) "!!! FATAL: self energy is not matsubara!"
@@ -164,8 +153,7 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   enddo
   !
   if (.not.inv) then
-    call zgetrf(norb, norb, gf, norb, ipiv, ii)
-    call zgetri(norb, gf, norb, ipiv, work, norb, ii)
+    call invmat(gf, norb)
   endif
   !
 END SUBROUTINE

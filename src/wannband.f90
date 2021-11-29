@@ -3,7 +3,7 @@ PROGRAM wannband
   use constants,only : cmplx_0, stdout, dp, fout, cmplx_i, twopi
   use para,     only : init_para, inode, distribute_calc, finalize_para, first_idx, last_idx, para_merge_real
   use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
-  use input,    only : read_input, seed, qvec, nqpt, emesh, nen, doCorr, eps, finalize_input
+  use input,    only : read_input, seed, qvec, nqpt, emesh, nen, level, eps, finalize_input
   use impurity, only : sinf, fulldim, restore_lattice, basis_map, init_impurity
   !
   implicit none
@@ -20,7 +20,7 @@ PROGRAM wannband
   CALL read_input('wannband')
   CALL read_ham(seed)
   !
-  if (doCorr) then
+  if (level==2) then
     CALL init_impurity()
     CALL ham_fix_static()
   endif
@@ -54,7 +54,7 @@ PROGRAM wannband
       !
       w=emesh(ii)+eps*cmplx_i
       !
-      if (doCorr) then
+      if (level==2) then
          call calc_corr_realgf(gf, hk, w, .false.)
       else
         call calc_g0(gf, hk, w, norb, .false.)
