@@ -45,7 +45,7 @@ SUBROUTINE output_spectral(spec, ene, nen, fd, nq)
       write(fd, '(2F18.12)') ene(ii), spec(ii)
     enddo
   else
-    write(fd, '(10F14.9)') spec(:)
+    write(fd, '(10E18.10)') spec(:)
   endif
   !
 END SUBROUTINE

@@ -1,12 +1,11 @@
 #!/bin/bash
 #PBS -N TEST
-#PBS -l nodes=1:ppn=24
+#PBS -l nodes=4:ppn=24
 #PBS -l walltime=24:00:00
 #PBS -q ccmp
 #PBS -j oe
 #PBS -o mpi.out
 #PBS -e mpi.err
-#PBS -V
 
 cd ${PBS_O_WORKDIR}
 
@@ -23,7 +22,7 @@ export GOTO_NUM_THREADS=1
 #
 exe=../src/wannband.x
 
-mpirun -n ${NP} ${exe} > test.log
+mpirun --mca btl '^openib' -n ${NP} ${exe} > test.log
 
 #${exe} > test.log
 

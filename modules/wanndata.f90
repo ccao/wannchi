@@ -84,10 +84,10 @@ SUBROUTINE read_ham(seed)
       do iorb=1, norb
         do jorb=1, norb
           read(fin, *) tt, a, b
-          if ((iorb.eq.1).and.(jorb.eq.1)) then
+          if ((jorb.eq.1).and.(iorb.eq.1)) then
             rvec(:, irpt)=tt(1:3)
           endif
-          ham(iorb, jorb, irpt)=CMPLX(a, b, KIND=dp)
+          ham(jorb, iorb, irpt)=CMPLX(a, b, KIND=dp)
         enddo
       enddo
     enddo
@@ -115,7 +115,6 @@ SUBROUTINE finalize_wann()
   if (allocated(rvec)) deallocate(rvec)
   !
 END SUBROUTINE
-
 
 END MODULE
 

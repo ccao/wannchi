@@ -23,7 +23,7 @@ END SUBROUTINE
 SUBROUTINE ham_fix_static()
   !
   use constants,       only: dp
-  use wanndata,        only: ham, norb, r000
+  use wanndata,        only: ham, r000
   use impurity,        only: fulldim, basis_map, restore_lattice, sinf, ncol
   !
   implicit none
@@ -75,7 +75,7 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
   !
   use constants,        only: dp
   use wanndata,         only: norb
-  use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, ismatsubara, interpolate_sigma
+  use impurity,         only: fulldim, basis_map, ncol, restore_lattice, ismatsubara, interpolate_sigma
   use linalgwrap,       only: invmat
   !
   implicit none
@@ -97,6 +97,7 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
   !
   gf(:,:)=-hk(:,:)
   call restore_lattice(sigfull, sigpack) ! Restore Full self energy
+  !
   do ii=1, fulldim
     do jj=1, fulldim
       gf(basis_map(ii), basis_map(jj))=gf(basis_map(ii), basis_map(jj))-sigfull(ii, jj)
@@ -134,8 +135,8 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
     write(*, *) "!!! FATAL: self energy is not matsubara!"
     stop
   endif
-  if (iom>fulldim) then
-    sigpack=cmplx_0
+  if (iom>nfreq) then
+    sigpack=cmplx_0  ! DO WE NEED TO CORRECT THIS???!!!
   else
     sigpack=sigma(:, iom)
   endif

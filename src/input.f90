@@ -34,7 +34,7 @@ CONTAINS
   !** file name: wannchi.inp
   !line 1: seed name       ! seed name
   !line 2: ef beta omega eps ! If this is susceptibility calculation
-  !line 2: emin emax ne eps  ! If this is band calculation
+  !line 2: ef emin emax ne  ! If this is band calculation
   !line 3: nkx nky nkz     ! If spectral calculation, no use
   !line 4-6 : ACELL
   !line 7: mode            ! Calculation mode
@@ -46,7 +46,7 @@ CONTAINS
   !  mode+10 : Full matrix
   !  mode+20 : with self-energy
   !  mode+30 : RPA
-  !line 5.. N : depend on mode%10
+  !line 8.. N : depend on mode%10
   !*************************************
   !
   use constants, only : dp, eps4, fin, fout
@@ -78,23 +78,25 @@ CONTAINS
   !
   call para_sync_real(tt_real, 8)
   !
+  mu=tt_real(1)
   if (codename=='wannchi') then
-    mu=tt_real(1)
     beta=tt_real(2)
     omega=tt_real(3)
+    eps=tt_real(4)
   else
-    nen=nint(tt_real(3))
+    nen=nint(tt_real(4))
     allocate(emesh(nen))
     do iq=1, nen
-      emesh(iq)=tt_real(1)+(tt_real(2)-tt_real(1))*(iq-1)/(nen-1)
+      emesh(iq)=tt_real(2)+(tt_real(3)-tt_real(2))*(iq-1)/(nen-1)
     enddo
+    eps=(tt_real(3)-tt_real(2))*3.d0/(nen-1)
+    ! default to 3 times mesh spacing
   endif
   !
   call para_sync_real(acell, 9)
   bcell=acell
   call invmat(bcell, 3)
   !
-  eps=tt_real(4)
   nkx=nint(tt_real(5))
   nky=nint(tt_real(6))
   nkz=nint(tt_real(7))
@@ -105,14 +107,26 @@ CONTAINS
   if (beta<0) beta=1.d7
   if (eps>eps4.or.eps<eps9) eps=eps4
   !
+  if (inode.eq.0) then
+    if (level==0) write(stdout, '(A)', advance='no') "    Uncorrelated calculation "
+    if (level==1) write(stdout, '(A)', advance='no') "    Correlated static limit calculation "
+    if (level==2) write(stdout, '(A)', advance='no') "    Correlated dynamic calculation "
+  endif
+  !
   select case (mode)
     case (0)
       nqpt=1
       allocate(qvec(1:3, 1:1))
-      if (inode.eq.0) read(fin, *) qvec(:, 1)
+      if (inode.eq.0) then
+        write(stdout, '(A)') "of a single point"
+        read(fin, *) qvec(:, 1)
+      endif
       call para_sync_real(qvec, 3*nqpt)
     case (1)
-      if (inode.eq.0) read(fin, *) tt_int(1:2)
+      if (inode.eq.0) then
+        write(stdout, '(A)') "of band structure"
+        read(fin, *) tt_int(1:2)
+      endif
       call para_sync_int(tt_int, 2)
       nqsec=tt_int(1)
       nq_per_sec=tt_int(2)
@@ -144,7 +158,11 @@ CONTAINS
         deallocate(qbnd_vec)
       endif
       call para_sync_real(qvec, 3*nqpt)
+      call para_sync_real(xq, nqsec)
     case (2)
+      if (inode.eq.0) then
+        write(stdout, '(A)') "of a plane"
+      endif
       nqpt=nkx*nky
       allocate(qvec(1:3, 1:nqpt))
       do iqx=1, nkx
@@ -156,6 +174,9 @@ CONTAINS
         enddo
       enddo
     case (3)
+      if (inode.eq.0) then
+        write(stdout, '(A)') "of bulk"
+      endif
       nqpt=nkx*nky*nkz
       allocate(qvec(1:3, 1:nqpt))
       do iqx=1, nkx
@@ -169,6 +190,8 @@ CONTAINS
         enddo
       enddo
   end select
+  !
+  if (inode.eq.0) close(unit=fin)
   !
  END SUBROUTINE
   !

@@ -24,9 +24,7 @@ MODULE impurity
   integer, dimension(:, :, :), allocatable :: sigind
   ! mapping from sig.inp to actual self energy matrix
   complex(dp), dimension(:, :, :), allocatable :: Utrans
-  ! Transform matrix from DMFT basis to spherical harmonix
-  complex(dp), dimension(:, :), allocatable :: Ufull
-  ! Full transform matrix from DMFT basis to lattice basis
+  ! Transform matrix from DMFT basis to cubic harmonix
   integer, dimension(:), allocatable :: basis_map
   ! Mapping from impurity to lattice
   ! i-th orbital in impurity problem is basis_map(i)-th orbital in lattice problem
@@ -91,27 +89,51 @@ MODULE impurity
 
   subroutine restore_lattice(siglat, sigpack)
     !
+    use para, only : inode
     implicit NONE
     !
     complex(dp), dimension(fulldim, fulldim) :: siglat
     complex(dp), dimension(ncol) :: sigpack
     !
-    complex(dp), dimension(fulldim, fulldim) :: sigtmp
+    complex(dp), dimension(:, :), allocatable :: sigtmp
+    complex(dp), dimension(:, :), allocatable :: mtmp
+    !complex(dp), dimension(fulldim, fulldim) :: sigtmp
     !
     integer ii, io1, io2
     siglat=cmplx_0
+    !
     do ii=1, nimp
+      allocate(sigtmp(ndim(ii), ndim(ii)))
+      allocate(mtmp(ndim(ii), ndim(ii)))
+      !
       do io1=1, ndim(ii)
         do io2=1, ndim(ii)
-          if (sigind(io1, io2, ii)>0) siglat(nnlow(ii)+io1, nnlow(ii)+io2)=sigpack(sigind(io1, io2, ii))
+          if (sigind(io1, io2, ii)>0) then
+            sigtmp(io1, io2)=sigpack(sigind(io1, io2, ii))
+          else
+            sigtmp(io1, io2)=cmplx_0
+          endif
         enddo
       enddo
+      !
+      call zgemm('N', 'N', ndim(ii), ndim(ii), ndim(ii), &
+      cmplx_1, sigtmp, ndim(ii), &
+      Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
+      cmplx_0, mtmp, ndim(ii))
+      !
+      call zgemm('C', 'N', ndim(ii), ndim(ii), ndim(ii), &
+      cmplx_1, Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
+      mtmp, ndim(ii), &
+      cmplx_0, sigtmp, ndim(ii))
+      !
+      do io1=1, ndim(ii)
+        do io2=1, ndim(ii)
+          siglat(nnlow(ii)+io1-1, nnlow(ii)+io2-1)=sigtmp(io1, io2)
+        enddo
+      enddo
+      !
+      deallocate(sigtmp, mtmp)
     enddo
-    !
-    call zgemm('N', 'N', fulldim, fulldim, fulldim, cmplx_1, siglat, fulldim, Utrans, fulldim, cmplx_0, sigtmp, fulldim)
-    call zgemm('T', 'N', fulldim, fulldim, fulldim, cmplx_1, Utrans, fulldim, sigtmp, fulldim, cmplx_0, siglat, fulldim)
-    !call gemm(siglat, Utrans, sigtmp, 'N', 'N')
-    !call gemm(Utrans, sigtmp, siglat, 'T', 'N')
     !
   end subroutine
 
@@ -210,6 +232,7 @@ MODULE impurity
   subroutine read_indmfl(fname)
     !
     use para,    only: inode, para_sync_int, para_sync_cmplx
+    use symmetry_module, only: generate_Ylm2C
     implicit none
     !
     character(len=80) :: fname
@@ -217,35 +240,48 @@ MODULE impurity
     integer maxdim
     integer ii, jj, kk
     real(dp), dimension(:), allocatable :: aa
+    integer, dimension(:), allocatable :: corr_l
+    complex(dp), dimension(:, :), allocatable :: umat, mtmp
+    integer, dimension(:), allocatable :: map_tmp
     !
     if (inode.eq.0) then
       open(unit=fin, file=trim(fname))
-      write(stdout, *) ' Reading impurity definitions from'//trim(fname)
+      write(stdout, *) ' Reading impurity definitions from '//trim(fname)
       read(fin, *)     !  # hybridization band index nemin and nemax, renormalize for interstitials, projection type
       read(fin, *) tt(1) ! # matsubara, broadening-corr, broadening-noncorr, nomega, omega_min, omega_max (in eV)
       read(fin, *) tt(2) ! # number of correlated atoms
-      do ii=1, tt(2)
+    endif
+    !
+    call para_sync_int(tt, 2)
+    ismatsubara=(tt(1).eq.1)
+    nimp=tt(2)
+    allocate(corr_l(nimp))
+    !
+    if (inode.eq.0) then
+      !
+      do ii=1, nimp
         read(fin, *)   !  # iatom, nL, locrot
-        read(fin, *)   !  # L, qsplit, cix
+        read(fin, *) corr_l(ii)  !  # L, qsplit, cix
       enddo
       !
       read(fin, *)     !  #================ # Siginds and crystal-field transformations for correlated orbitals ================
-      read(fin, *) tt(2:3)
+      read(fin, *) tt(1:2)
       !
     endif
     !
-    call para_sync_int(tt, 3)
-    ismatsubara=(tt(1).eq.1)
-    nimp=tt(2)
-    maxdim=tt(3)
+    call para_sync_int(corr_l, nimp)
+    call para_sync_int(tt, 2)
+    maxdim=tt(2)
     !
     allocate(ndim(nimp))
     allocate(nnlow(nimp))
     allocate(sigind(maxdim, maxdim, nimp))
     allocate(Utrans(maxdim, maxdim, nimp))
+    allocate(map_tmp(maxdim*nimp))
     !
     sigind(:, :, :)=-1
     Utrans(:, :, :)=cmplx_0
+    map_tmp(:)=0
     !
     if (inode.eq.0) then
       if (ismatsubara) then
@@ -265,7 +301,9 @@ MODULE impurity
         ndim(ii)=tt(2)
         write(stdout, '(1I4)', advance='no') ndim(ii)
         read(fin, *)   !  #---------------- # Independent components are --------------
-        read(fin, *)   !  '5/2' '7/2'
+        !read(fin, *)   !  '5/2' '7/2'
+        read(fin, *) map_tmp((ii-1)*maxdim+1:(ii-1)*maxdim+ndim(ii))
+        !               Now contains the mapping from impurity to global
         read(fin, *)   !  #---------------- # Sigind follows --------------------------
         do jj=1, ndim(ii)
           read(fin, *) sigind(1:ndim(ii), jj, ii)
@@ -285,6 +323,7 @@ MODULE impurity
       close(unit=fin)
     endif
     !
+    call para_sync_int(map_tmp, maxdim*nimp)
     call para_sync_int(ndim, nimp)
     call para_sync_int(sigind, maxdim*maxdim*nimp)
     call para_sync_cmplx(Utrans, maxdim*maxdim*nimp)
@@ -298,6 +337,49 @@ MODULE impurity
     do ii=2, nimp
       nnlow(ii)=nnlow(ii-1)+ndim(ii-1)
     enddo
+    !
+    ! Utrans in the indmfl file is defined on Ylm basis
+    !   We need cubic harmonix
+    !
+    allocate(basis_map(fulldim))
+    allocate(umat(maxdim, maxdim), mtmp(maxdim, maxdim))
+    do ii=1, nimp
+      basis_map(nnlow(ii):nnlow(ii)+ndim(ii)-1)=map_tmp((ii-1)*maxdim+1:(ii-1)*maxdim+ndim(ii))
+      !
+      umat=cmplx_0
+      mtmp=cmplx_0
+      CALL generate_Ylm2C(umat(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1), corr_l(ii))
+      !!! We are ignoring the possibility of nonsoc or subspace run here
+      mtmp(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)=umat(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)
+      mtmp(2*corr_l(ii)+2:4*corr_l(ii)+2, 2*corr_l(ii)+2:4*corr_l(ii)+2)=umat(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)
+      !
+      call zgemm('C', 'N', ndim(ii), ndim(ii), ndim(ii), &
+      cmplx_1, Utrans(:, :, ii), ndim(ii), &
+      mtmp(1:ndim(ii), 1:ndim(ii)), ndim(ii), &
+      cmplx_0, umat(1:ndim(ii), 1:ndim(ii)), ndim(ii))
+      !
+      Utrans(:, :, ii)=umat(1:ndim(ii), 1:ndim(ii))
+      !
+    enddo
+    deallocate(umat, mtmp)
+    deallocate(map_tmp)
+    if (inode.eq.0) then
+      write(stdout, *) " Mapping between impurity problem to full lattice:"
+      do ii=1, fulldim
+        write(stdout, '(15X,1I5,A,1I5)') ii, '<=>', basis_map(ii)
+      enddo
+      !
+      write(stdout, *) " Transformation Matrices are: "
+      do ii=1, nimp
+        write(stdout, '(A,1I5)') "    Impurity ", ii
+        do jj=1, ndim(ii)
+          do kk=1, ndim(ii)
+            write(stdout, '(2F9.4,2X)', advance='no') Utrans(jj, kk, ii)
+          enddo
+          write(stdout, *)
+        enddo
+      enddo
+    endif
     !
   end subroutine
   
