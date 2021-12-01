@@ -42,7 +42,7 @@ SUBROUTINE output_spectral(spec, ene, nen, fd, nq)
   !
   if (nq.eq.1) then
     do ii=1, nen
-      write(fd, '(2F18.12)') ene(ii), spec(ii)
+      write(fd, '(2E18.12)') ene(ii), spec(ii)
     enddo
   else
     write(fd, '(10E18.10)') spec(:)

@@ -1,62 +1,86 @@
 PROGRAM wannchi
   !
   use constants,only : cmplx_0, stdout, dp, fout
-  use para,     only : init_para, inode, distribute_k, finalize_para
-  use wanndata, only : read_ham, norb, finalize_wann
-  use banddata, only : nbnd, init_band, finalize_band
-  use input,    only : read_input, seed, qvec, nqpt, nkpt
-  use chidata,  only : finalize_chi
+  use para,     only : init_para, inode, distribute_calc, finalize_para
+  use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
+  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu
+  use impurity, only : init_impurity, finalize_impurity, ismatsubara
   !
   implicit none
   !
-  integer iq
-  integer dnq
-  complex(dp), allocatable :: chi(:)
+  complex(dp), dimension(:), allocatable :: chi, chi0
+  integer iq, ii
   !
-  CALL init_para
-  CALL read_input
+  CALL init_para('wannchi')
+  CALL read_input('wannchi')
   CALL read_ham(seed)
   !
-  nbnd=norb
+  CALL ham_shift_ef(mu)
   !
-  CALL init_band
+  if (level>0) then
+    CALL init_impurity()
+    CALL ham_fix_static()
+  endif
   !
-  CALL distribute_k(nkpt)
+  if (ismatsubara) then
+    call check_beta()
+  endif
   !
-  CALL interpolate_bands
+  allocate(chi(nnu), chi0(nnu))
   !
-  allocate(chi(1:nqpt))
-  chi=cmplx_0
-  !
-  open(unit=fout, file="wannchi.dat")
-  !
-  dnq=nqpt/100
-  if (dnq<2) dnq=2
+  if (inode.eq.0) then
+    open(unit=fout, file='chi.dat')
+    write(fout, '(A)') '#  susceptibility from wannchi'
+  endif
   !
   do iq=1, nqpt
     !
-    CALL compute_chi_bare_diag(chi(iq), qvec(:, iq))
-    !
-    if ((nqpt.ne.1).and.(mod(iq-1, dnq).eq.0)) then
-      if (inode.eq.0) then
-        write(stdout, *) " #... Percentage done: ", (iq-1)*100/nqpt, "%"
-      endif
+    if (inode.eq.0) then
+      write(stdout, '(A,1I5)') 'Calculating qvec #', iq
     endif
     !
-    CALL output_chi(qvec(:, iq), chi(iq))
+    call calc_chi_corr_trace(chi, chi0, nnu, qvec(:,iq))
     !
+    if (inode.eq.0) then
+      write(fout, '(A,3F9.4)') '#   q: ', qvec(:, iq)
+      write(fout, '(A)') '  # Non-interacting chi0:'
+      do ii=1, nnu
+        write(fout, '(2F14.9,2X)', advance='no') chi0(ii)
+      enddo
+      write(fout, *)
+      write(fout, '(A)') '  # Interacting chi: '
+      do ii=1, nnu
+        write(fout, '(2F14.9,2X)', advance='no') chi(ii)
+      enddo
+      write(fout, *)
+    endif
   enddo
   !
-  deallocate(chi)
-  !
-  close(unit=fout)
-  !
-  CALL finalize_chi
+  deallocate(chi, chi0)
   !
   CALL finalize_wann
-  !
-  CALL finalize_band
-  !
+  CALL finalize_impurity
+  CALL finalize_input
   CALL finalize_para
   !
 END PROGRAM
+
+SUBROUTINE check_beta()
+  !
+  use constants, only : eps4, stdout
+  use impurity,  only : beta
+  use input,     only : beta_in
+  !
+  implicit none
+  !
+  if (abs(beta-beta_in)>eps4) then
+    write(stdout, '(A)') '!!! WARNNING: input beta is not consistent with self-energy!'
+    write(stdout, '(A,2F9.4)') '        The input and sig file beta are:', beta_in, beta
+    write(stdout, '(A)') '      We shall continue using the input self-energy'
+    write(stdout, '(A)') '      But you must know what you are doing!'
+  endif
+  !
+  beta=beta_in
+  !
+END SUBROUTINE
+

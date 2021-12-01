@@ -35,8 +35,10 @@ MODULE impurity
   ! Sigma(ncol, nfreq)
   real(dp), dimension(:), allocatable :: sinf
   ! soo-vdc sinf(ncol)
-  complex(dp), dimension(:), allocatable :: omega
-  ! frequency mesh
+  real(dp) :: beta
+  ! Used in Matsubara frequency calculations
+  real(dp), dimension(:), allocatable :: omega
+  ! frequency mesh, used only in real-frequency calculations
   complex(dp), dimension(:, :), allocatable :: sigma
   ! Actual self energy
   !
@@ -52,22 +54,21 @@ MODULE impurity
     implicit none
     !
     complex(dp), dimension(ncol) :: sigpack
-    complex(dp) :: w
+    real(dp) :: w
     !
     integer low, high, mid
-    real(dp) :: w0, w1, w2
-    w0=real(w, KIND=dp)
+    real(dp) :: w1, w2
     !
-    if (w0>real(omega(nfreq), KIND=dp).or.w0<real(omega(1), KIND=dp)) then
+    if (w>omega(nfreq).or.w<omega(1)) then
       sigpack=cmplx_0
     else
       low=1
       high=nfreq
       do while((high-low)>1)
         mid=(high+low)/2
-        if (w0>real(omega(mid), KIND=dp)) then
+        if (w>omega(mid)) then
           low=mid
-        elseif (w0<real(omega(mid), KIND=dp)) then
+        elseif (w<omega(mid)) then
           high=mid
         else
           high=mid
@@ -78,9 +79,9 @@ MODULE impurity
       if (high.eq.low) then
         sigpack(:)=sigma(:, high)
       else
-        w1=real(omega(low), KIND=dp)
-        w2=real(omega(high), KIND=dp)
-        sigpack(:)=((w0-w1)*sigma(:, low)+(w2-w0)*sigma(:, high))/(w2-w1)
+        w1=omega(low)
+        w2=omega(high)
+        sigpack(:)=((w-w1)*sigma(:, low)+(w2-w)*sigma(:, high))/(w2-w1)
       endif
       !
     endif
@@ -89,7 +90,6 @@ MODULE impurity
 
   subroutine restore_lattice(siglat, sigpack)
     !
-    use para, only : inode
     implicit NONE
     !
     complex(dp), dimension(fulldim, fulldim) :: siglat
@@ -207,11 +207,7 @@ MODULE impurity
       !
       do ii=1, nfreq
         read(fin, *) aa
-        if (ismatsubara) then
-          omega(ii)=aa(1)*cmplx_i
-        else
-          omega(ii)=aa(1)
-        endif
+        omega(ii)=aa(1)
         do jj=1, ncol
           sigma(jj, ii)=aa(2*jj)+aa(2*jj+1)*cmplx_i
         enddo
@@ -223,9 +219,14 @@ MODULE impurity
       !
     endif
     !
-    call para_sync_cmplx(omega, nfreq)
+    call para_sync_real(omega, nfreq)
     call para_sync_real(sinf, ncol)
     call para_sync_cmplx(sigma, ncol*nfreq)
+    !
+    if (ismatsubara) then
+      beta=(2*nfreq-1.d0)*twopi/(2.d0*omega(nfreq))
+      deallocate(omega)
+    endif
     !
   end subroutine
   !

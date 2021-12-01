@@ -4,7 +4,7 @@ PROGRAM wannband
   use para,     only : init_para, inode, distribute_calc, finalize_para, first_idx, last_idx, para_merge_real
   use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
   use input,    only : read_input, seed, qvec, nqpt, emesh, nen, level, eps, finalize_input, mu
-  use impurity, only : restore_lattice, init_impurity
+  use impurity, only : init_impurity, finalize_impurity
   !
   implicit none
   !
@@ -63,12 +63,13 @@ PROGRAM wannband
       endif
       !
       do jj=1, norb
-        spec(ii)=spec(ii)-aimag(gf(jj, jj))/twopi
+        spec(ii)=spec(ii)-aimag(gf(jj, jj))
       enddo
       !
     enddo ! ii
     !
     call para_merge_real(spec, nen)
+    spec(:)=spec(:)*2.d0/twopi
     !
     if (inode.eq.0) then
       call output_spectral(spec, emesh, nen, fout, nqpt)
@@ -81,6 +82,7 @@ PROGRAM wannband
   deallocate(hk, gf, spec)
   !
   CALL finalize_wann
+  CALL finalize_impurity
   CALL finalize_input
   CALL finalize_para
   !

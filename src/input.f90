@@ -11,7 +11,10 @@ MODULE input
   ! Reciprocal lattice vectors bcell(3,3)
   real(dp), dimension(:, :), allocatable :: qvec
   ! qvectors: qvec(3, iq)
-  real(dp) mu, beta, omega, eps
+  real(dp) mu, beta_in, eps
+  !
+  integer nnu
+  !
   integer  nkx, nky, nkz
   integer  nen
   real(dp), dimension(:), allocatable :: emesh
@@ -80,8 +83,8 @@ CONTAINS
   !
   mu=tt_real(1)
   if (codename=='wannchi') then
-    beta=tt_real(2)
-    omega=tt_real(3)
+    beta_in=tt_real(2)
+    nnu=nint(tt_real(3))
     eps=tt_real(4)
   else
     nen=nint(tt_real(4))
@@ -104,7 +107,7 @@ CONTAINS
   level=mode/10
   mode=mod(mode,10)
   !
-  if (beta<0) beta=1.d7
+  if (beta_in<0) beta_in=1.d7
   if (eps>eps4.or.eps<eps9) eps=eps4
   !
   if (inode.eq.0) then

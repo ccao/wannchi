@@ -93,7 +93,7 @@ SUBROUTINE calc_corr_realgf(gf, hk, w, inv)
     stop
   endif
   !
-  call interpolate_sigma(sigpack, w)
+  call interpolate_sigma(sigpack, real(w))
   !
   gf(:,:)=-hk(:,:)
   call restore_lattice(sigfull, sigpack) ! Restore Full self energy
@@ -116,9 +116,9 @@ END SUBROUTINE
 
 SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   !
-  use constants,        only: dp, cmplx_0
+  use constants,        only: dp, cmplx_0, cmplx_i, twopi
   use wanndata,         only: norb
-  use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, omega, ismatsubara
+  use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, ismatsubara, beta
   use linalgwrap,       only: invmat
   !
   implicit none
@@ -130,13 +130,19 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   integer ii, jj
   complex(dp), dimension(ncol) :: sigpack
   complex(dp), dimension(fulldim, fulldim) :: sigfull
+  complex(dp) :: w
   !
   if (.not.ismatsubara) then
     write(*, *) "!!! FATAL: self energy is not matsubara!"
     stop
   endif
-  if (iom>nfreq) then
+  !
+  w=(iom-0.5d0)*twopi/beta*cmplx_i
+  !
+  if (iom>nfreq .or. iom<-nfreq+1) then
     sigpack=cmplx_0  ! DO WE NEED TO CORRECT THIS???!!!
+  else if (iom<=0) then
+    sigpack=conjg(sigma(:,1-iom))
   else
     sigpack=sigma(:, iom)
   endif
@@ -150,7 +156,7 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   enddo
   !
   do ii=1, norb
-    gf(ii, ii)=omega(iom)+gf(ii, ii)
+    gf(ii, ii)=w+gf(ii, ii)
   enddo
   !
   if (.not.inv) then
