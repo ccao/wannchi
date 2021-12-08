@@ -193,10 +193,15 @@ SUBROUTINE para_collect_cmplx(fulldat, dat, blk_size)
   !
 #if defined __MPI
   !
-  integer ierr
-  integer tmap(nnode, 2)
-  tmap(:, :)=map(:, :)*blk_size
-  call mpi_gatherv(dat, tmap(inode+1, 2), MPI_DOUBLE_COMPLEX, fulldat, tmap(:, 2), tmap(:, 1), MPI_DOUBLE_COMPLEX, 0, mpi_comm_world, ierr)
+  ! We need to use mpi_type
+  integer ierr, blk_cmplx
+  !
+  call mpi_type_contiguous(blk_size, MPI_DOUBLE_COMPLEX, blk_cmplx, ierr)
+  ! new type object created
+  call mpi_type_commit(blk_cmplx, ierr)
+  ! now type1 can be used for communication
+  call mpi_gatherv(dat, map(inode+1, 2), blk_cmplx, fulldat, map(:, 2), map(:, 1), blk_cmplx, 0, mpi_comm_world, ierr)
+  call mpi_type_free(blk_cmplx, ierr)
   !
 #endif
   !
@@ -213,10 +218,15 @@ SUBROUTINE para_distribute_cmplx(fulldat, dat, blk_size)
   !
 #if defined __MPI
   !
-  integer ierr
-  integer tmap(nnode, 2)
-  tmap(:, :)=map(:, :)*blk_size
-  CALL mpi_scatterv(fulldat, tmap(:, 2), tmap(:, 1), MPI_DOUBLE_COMPLEX, dat, tmap(inode+1, 2), MPI_DOUBLE_COMPLEX, 0, mpi_comm_world, ierr)
+  ! We need to use mpi_type
+  integer ierr, blk_cmplx
+  !
+  call mpi_type_contiguous(blk_size, MPI_DOUBLE_COMPLEX, blk_cmplx, ierr)
+  ! new type object created
+  call mpi_type_commit(blk_cmplx, ierr)
+  ! now type1 can be used for communication
+  CALL mpi_scatterv(fulldat, map(:, 2), map(:, 1), blk_cmplx, dat, map(inode+1, 2), blk_cmplx, 0, mpi_comm_world, ierr)
+  call mpi_type_free(blk_cmplx, ierr)
   !
 #endif
   !

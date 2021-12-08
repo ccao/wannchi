@@ -36,7 +36,7 @@ CONTAINS
   !************ INPUT FILE *************
   !** file name: wannchi.inp
   !line 1: seed name       ! seed name
-  !line 2: ef beta omega eps ! If this is susceptibility calculation
+  !line 2: ef beta nnu eps ! If this is susceptibility calculation
   !line 2: ef emin emax ne  ! If this is band calculation
   !line 3: nkx nky nkz     ! If spectral calculation, no use
   !line 4-6 : ACELL

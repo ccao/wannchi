@@ -1,14 +1,14 @@
 PROGRAM wannchi
   !
-  use constants,only : cmplx_0, stdout, dp, fout
+  use constants,only : stdout, dp, fout, cmplx_i, cmplx_0
   use para,     only : init_para, inode, distribute_calc, finalize_para
   use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
-  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu
-  use impurity, only : init_impurity, finalize_impurity, ismatsubara
+  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu, eps, nen, emesh
+  use impurity, only : init_impurity, finalize_impurity, ismatsubara, nfreq
   !
   implicit none
   !
-  complex(dp), dimension(:), allocatable :: chi, chi0
+  complex(dp), dimension(:), allocatable :: chi, chi0, w
   integer iq, ii
   !
   CALL init_para('wannchi')
@@ -24,13 +24,26 @@ PROGRAM wannchi
   !
   if (ismatsubara) then
     call check_beta()
+  else
+    nen=nnu
+    allocate(emesh(nnu), w(nnu))
+    do ii=1, nnu
+      emesh(ii)=(ii-1.d0)*eps
+      if (ii>1) then
+        w(ii)=emesh(ii)+eps*0.1*cmplx_i
+      else
+        w(ii)=cmplx_0
+      endif
+    enddo
   endif
   !
-  allocate(chi(nnu), chi0(nnu))
+  allocate(chi0(nnu))
+  if (level>1) allocate(chi(nnu))
+  !allocate(chi(2*nfreq-nnu), chi0(2*nfreq-nnu))
   !
   if (inode.eq.0) then
     open(unit=fout, file='chi.dat')
-    write(fout, '(A)') '#  susceptibility from wannchi'
+    if (level<2) call output_header(fout)
   endif
   !
   do iq=1, nqpt
@@ -39,24 +52,42 @@ PROGRAM wannchi
       write(stdout, '(A,1I5)') 'Calculating qvec #', iq
     endif
     !
-    call calc_chi_corr_trace(chi, chi0, nnu, qvec(:,iq))
+    if (level>1) then
+      call calc_chi_corr_trace(chi, chi0, nnu, qvec(:,iq))
+      !call analyze_chi_corr_trace(chi, chi0, nnu, qvec(:, iq))
+    else
+      call calc_chi_bare_trace(chi0, w, nnu, qvec(:, iq))
+    endif
     !
     if (inode.eq.0) then
-      write(fout, '(A,3F9.4)') '#   q: ', qvec(:, iq)
-      write(fout, '(A)') '  # Non-interacting chi0:'
-      do ii=1, nnu
-        write(fout, '(2F14.9,2X)', advance='no') chi0(ii)
-      enddo
-      write(fout, *)
-      write(fout, '(A)') '  # Interacting chi: '
-      do ii=1, nnu
-        write(fout, '(2F14.9,2X)', advance='no') chi(ii)
-      enddo
-      write(fout, *)
+      if (level<2) then
+        call output_chi(chi0, fout, nqpt)
+      else
+        write(fout, '(A,3F9.4)') '#   q: ', qvec(:, iq)
+        write(fout, '(A)') '  # Non-interacting chi0:'
+        do ii=1, nnu
+          write(fout, '(2F14.9,2X)', advance='no') chi0(ii)
+        enddo
+        write(fout, *)
+        write(fout, '(A)') '  # Interacting chi: '
+        do ii=1, nnu
+          write(fout, '(2F14.9,2X)', advance='no') chi(ii)
+        enddo
+        write(fout, *)
+      endif
+      !
+      !write(fout, *) "# !!!!! ANALYZE OUTPUT "
+      !do ii=1, 2*nfreq-nnu
+      !  chi_diff=cmplx_1/chi(ii)-cmplx_1/chi0(ii)
+      !  write(fout, '(1F9.2,6G18.9)') ii-nfreq-0.5d0, chi(ii), chi0(ii), chi_diff
+      !enddo
     endif
   enddo
   !
-  deallocate(chi, chi0)
+  deallocate(chi0)
+  if (level>1) deallocate(chi)
+  !
+  if (inode.eq.0) close(unit=fout)
   !
   CALL finalize_wann
   CALL finalize_impurity

@@ -72,7 +72,7 @@ PROGRAM wannband
     spec(:)=spec(:)*2.d0/twopi
     !
     if (inode.eq.0) then
-      call output_spectral(spec, emesh, nen, fout, nqpt)
+      call output_spectral(spec, fout, nqpt)
     endif
     !
   enddo ! iq

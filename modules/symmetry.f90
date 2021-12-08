@@ -30,28 +30,25 @@ MODULE symmetry_module
   !
   CONTAINS
   !
-  FUNCTION inverse_symm(symm) result(r)
+  SUBROUTINE inverse_symm(symm)
     !
     use linalgwrap,  only: invmat
     !
-    TYPE(symmetry), intent(in)  :: symm
-    TYPE(symmetry)              :: r
+    TYPE(symmetry), intent(inout)  :: symm
     !
     integer ii
+    real(dp), dimension(3) :: tt
     !
-    r%rot=symm%rot
+    tt(:)=symm%tau(:)
     !
-    CALL invmat(r%rot, 3)
+    CALL invmat(symm%rot, 3)
     !
     do ii=1, 3
-      r%tau(ii)=-sum(r%rot(ii,:)*symm%tau(:))
+      symm%tau(ii)=-sum(symm%rot(ii,:)*tt(:))
     enddo
+    symm%theta=-symm%theta
     !
-    r%axis=symm%axis
-    r%theta=-symm%theta
-    r%inv=symm%inv
-    !
-  END FUNCTION
+  END SUBROUTINE
 
   SUBROUTINE generate_Smatrix(Sx, Sy, Sz)
     !

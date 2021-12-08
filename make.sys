@@ -11,7 +11,7 @@ CC=icc
 
 
 F90=mpif90
-F90FLAGS=-g -D__MPI -D_INTEL # -D__SINGLE_PRECISION
+F90FLAGS= -mavx -D__MPI -D_INTEL
 
 INCLUDES=-I$(MKLINCLUDE) -I../modules -I. -I$(MKLROOT)/include/intel64/lp64
 
@@ -19,8 +19,6 @@ MKLINCLUDE=$(MKLROOT)/include
 MKLLIBS=-L$(MKLROOT)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core
 
 LAPACKLIBS=$(MKLLIBS)
-#LAPACK95LIBS=$(MKLROOT)/lib/intel64/libmkl_lapack95_lp64.a 
-
 
 AR             = ar
 ARFLAGS        = ruv

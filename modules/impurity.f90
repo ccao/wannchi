@@ -232,8 +232,8 @@ MODULE impurity
   !
   subroutine read_indmfl(fname)
     !
-    use para,    only: inode, para_sync_int, para_sync_cmplx
-    use symmetry_module, only: generate_Ylm2C
+    use para,    only: inode, para_sync_int, para_sync_cmplx, para_sync_real
+    use symmetry_module, only: generate_Ylm2C, symmetry, rotate_J, init_symm, inverse_symm
     implicit none
     !
     character(len=80) :: fname
@@ -242,8 +242,10 @@ MODULE impurity
     integer ii, jj, kk
     real(dp), dimension(:), allocatable :: aa
     integer, dimension(:), allocatable :: corr_l
-    complex(dp), dimension(:, :), allocatable :: umat, mtmp
+    complex(dp), dimension(:, :), allocatable :: umat, mtmp, locrot_j
     integer, dimension(:), allocatable :: map_tmp
+    real(dp), dimension(:, :, :), allocatable :: locrot
+    TYPE(symmetry)  :: symm
     !
     if (inode.eq.0) then
       open(unit=fin, file=trim(fname))
@@ -258,11 +260,23 @@ MODULE impurity
     nimp=tt(2)
     allocate(corr_l(nimp))
     !
+    allocate(locrot(3, 3, nimp))
+    do ii=1, nimp
+      do jj=1, 3
+        locrot(jj, jj, ii)=1.d0
+      enddo
+    enddo
+    !
     if (inode.eq.0) then
       !
       do ii=1, nimp
-        read(fin, *)   !  # iatom, nL, locrot
+        read(fin, *)   tt !  # iatom, nL, locrot
         read(fin, *) corr_l(ii)  !  # L, qsplit, cix
+        if (tt(3).ne.0) then
+          do jj=1, 3
+            read(fin, *) locrot(:, jj, ii)
+          enddo
+        endif
       enddo
       !
       read(fin, *)     !  #================ # Siginds and crystal-field transformations for correlated orbitals ================
@@ -270,6 +284,7 @@ MODULE impurity
       !
     endif
     !
+    call para_sync_real(locrot, 3*3*nimp)
     call para_sync_int(corr_l, nimp)
     call para_sync_int(tt, 2)
     maxdim=tt(2)
@@ -343,8 +358,19 @@ MODULE impurity
     !   We need cubic harmonix
     !
     allocate(basis_map(fulldim))
-    allocate(umat(maxdim, maxdim), mtmp(maxdim, maxdim))
+    !allocate(umat(maxdim, maxdim), mtmp(maxdim, maxdim))
     do ii=1, nimp
+      allocate(umat(4*corr_l(ii)+2, 4*corr_l(ii)+2))
+      allocate(mtmp(4*corr_l(ii)+2, 4*corr_l(ii)+2))
+      allocate(locrot_j(4*corr_l(ii)+2, 4*corr_l(ii)+2))
+      ! WIEN2k has its own "local-axis"
+      !   which has different definition from us
+      !
+      call init_symm(symm, locrot(:, :, ii), (/0.d0, 0.d0, 0.d0/))
+      call inverse_symm(symm)
+      locrot_j=cmplx_0
+      call rotate_J(locrot_j, corr_l(ii), symm)
+      !
       basis_map(nnlow(ii):nnlow(ii)+ndim(ii)-1)=map_tmp((ii-1)*maxdim+1:(ii-1)*maxdim+ndim(ii))
       !
       umat=cmplx_0
@@ -354,16 +380,24 @@ MODULE impurity
       mtmp(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)=umat(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)
       mtmp(2*corr_l(ii)+2:4*corr_l(ii)+2, 2*corr_l(ii)+2:4*corr_l(ii)+2)=umat(1:2*corr_l(ii)+1, 1:2*corr_l(ii)+1)
       !
-      call zgemm('C', 'N', ndim(ii), ndim(ii), ndim(ii), &
-      cmplx_1, Utrans(:, :, ii), ndim(ii), &
-      mtmp(1:ndim(ii), 1:ndim(ii)), ndim(ii), &
-      cmplx_0, umat(1:ndim(ii), 1:ndim(ii)), ndim(ii))
+      !call zgemm('C', 'C', ndim(ii), ndim(ii), ndim(ii), &
+      !cmplx_1, Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
+      !locrot_j, ndim(ii), &
+      !cmplx_0, umat, ndim(ii))
+      call zgemm('C', 'C', ndim(ii), ndim(ii), ndim(ii), &
+      cmplx_1, locrot_j, ndim(ii), &
+      Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
+      cmplx_0, umat, ndim(ii))
       !
-      Utrans(:, :, ii)=umat(1:ndim(ii), 1:ndim(ii))
+      call zgemm('N', 'N', ndim(ii), ndim(ii), ndim(ii), &
+      cmplx_1, umat, ndim(ii), &
+      mtmp, ndim(ii), &
+      cmplx_0, Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii))
       !
+      deallocate(umat, mtmp, locrot_j)
     enddo
-    deallocate(umat, mtmp)
-    deallocate(map_tmp)
+    !deallocate(umat, mtmp)
+    deallocate(map_tmp, locrot)
     if (inode.eq.0) then
       write(stdout, *) " Mapping between impurity problem to full lattice:"
       do ii=1, fulldim

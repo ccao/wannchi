@@ -30,21 +30,45 @@ SUBROUTINE output_header(fd)
   !
 END SUBROUTINE
 
-SUBROUTINE output_spectral(spec, ene, nen, fd, nq)
+SUBROUTINE output_spectral(spec, fd, nq)
   !
   use constants, only : dp
+  use input,     only : emesh, nen
   implicit none
   !
-  integer nen, fd, nq
-  real(dp), dimension(nen) :: spec, ene
+  integer fd, nq
+  real(dp), dimension(nen) :: spec
   !
   integer ii
   !
   if (nq.eq.1) then
     do ii=1, nen
-      write(fd, '(2E18.12)') ene(ii), spec(ii)
+      write(fd, '(2E18.12)') emesh(ii), spec(ii)
     enddo
   else
+    write(fd, '(10E18.10)') spec(:)
+  endif
+  !
+END SUBROUTINE
+
+SUBROUTINE output_chi(chi, fd, nq)
+  !
+  use constants, only : dp
+  use input,     only : emesh, nen
+  implicit none
+  !
+  integer fd, nq
+  complex(dp), dimension(nen) :: chi
+  !
+  real(dp), dimension(nen) :: spec
+  integer ii
+  !
+  if (nq.eq.1) then
+    do ii=1, nen
+      write(fd, '(3E18.10)') emesh(ii), chi(ii)
+    enddo
+  else
+    spec(:)=real(chi(:))
     write(fd, '(10E18.10)') spec(:)
   endif
   !
