@@ -33,6 +33,8 @@ MODULE impurity
   integer nfreq
   ! self energy has ncolumns and nfrequencies 
   ! Sigma(ncol, nfreq)
+  integer nexact
+  ! exact self-energy (beyond that are tails)
   real(dp), dimension(:), allocatable :: sinf
   ! soo-vdc sinf(ncol)
   real(dp) :: beta

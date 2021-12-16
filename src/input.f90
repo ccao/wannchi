@@ -4,18 +4,23 @@ MODULE input
   !
   implicit none
   !
-  integer nqpt
   real(dp), dimension(3, 3) :: acell
   ! Lattice vectors acell(3, 3)
   real(dp), dimension(3, 3) :: bcell
   ! Reciprocal lattice vectors bcell(3,3)
+  integer nqpt
+  ! Number of qpts
   real(dp), dimension(:, :), allocatable :: qvec
   ! qvectors: qvec(3, iq)
   real(dp) mu, beta_in, eps
   !
   integer nnu
+  ! Number of matsubara frequencies to be calculated
+  integer nexact
+  ! Number of exact Matsubara frequency GFs to be calculated
   !
   integer  nkx, nky, nkz
+  ! Kmesh in interpolation
   integer  nen
   real(dp), dimension(:), allocatable :: emesh
   !
@@ -25,9 +30,14 @@ MODULE input
   character(len=5), dimension(:), allocatable :: xlabel
   !
   integer level
+  ! Calculation level
   integer mode
+  ! Calculation mode
   !
   character(len=80) seed
+  !
+  !namelist /CONTROL/ level, mode, nkx, nky, nkz
+  !namelist /SYSTEM/ seed, beta_in, mu, acell
   !
 CONTAINS
   !
@@ -86,6 +96,7 @@ CONTAINS
     beta_in=tt_real(2)
     nnu=nint(tt_real(3))
     eps=tt_real(4)
+    nexact=nint(tt_real(4))
   else
     nen=nint(tt_real(4))
     allocate(emesh(nen))

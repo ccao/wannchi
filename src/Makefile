@@ -15,5 +15,8 @@ wannband: wannband.f90 $(objects) $(LIBS)
 wannchi: wannchi.f90 $(objects) $(LIBS)
 	$(F90) $(F90FLAGS) -fpp -o wannchi.x wannchi.f90 $(objects) $(LIBS) -I$(MKLINCLUDE) -I../modules -I. $(LAPACK95LIBS) $(MKLLIBS)
 
+analyzechi: analyze_chi.f90 $(objects) $(LIBS)
+	$(F90) $(F90FLAGS) -fpp -o analyzechi.x analyze_chi.f90 $(objects) $(LIBS) -I$(MKLINCLUDE) -I../modules -I. $(LAPACK95LIBS) $(MKLLIBS)
+
 clean:
 	rm -rf *.o *.mod *.x *.i90

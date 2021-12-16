@@ -14,6 +14,7 @@ MODULE constants
   integer, parameter :: stdout=6
   integer, parameter :: fin=10
   integer, parameter :: fout=11
+  integer, parameter :: maxint=2147483647
   real(dp), parameter :: eps4=1.0d-4
   real(dp), parameter :: eps6=1.0d-6
   real(dp), parameter :: eps9=1.0d-9
