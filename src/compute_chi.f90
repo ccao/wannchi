@@ -112,7 +112,7 @@ SUBROUTINE calc_chi_bare_trace(chi0, nu, nnu, qv)
   !
   use constants,    only : dp, cmplx_0, stdout, eps6
   use wanndata,     only : norb
-  use input,        only : nkx, nky, nkz, beta_in
+  use input,        only : nkx, nky, nkz, beta
   use para,         only : inode, para_merge_cmplx, distribute_calc, first_idx, last_idx
   !
   implicit none
@@ -157,7 +157,7 @@ SUBROUTINE calc_chi_bare_trace(chi0, nu, nnu, qv)
     call calc_hk(hk, k)
     call calc_hk(hkq, kq)
     !
-    call calc_eig_occ_Skq(ek, ekq, occ_k, occ_kq, Skq, hk, hkq, beta_in)
+    call calc_eig_occ_Skq(ek, ekq, occ_k, occ_kq, Skq, hk, hkq, beta)
     !
     do inu=1, nnu
       call calc_partial_chi_bare_trace(chi0_part(inu), nu(inu), ek, ekq, occ_k, occ_kq, Skq)
@@ -179,8 +179,7 @@ SUBROUTINE calc_chi_corr_trace(chi, chi0, nnu, qv)
   !
   use constants,    only : dp, cmplx_0, stdout, eps6
   use wanndata,     only : norb
-  use input,        only : nkx, nky, nkz, nexact
-  use impurity,     only : beta
+  use input,        only : nkx, nky, nkz, nexact, beta
   use para,         only : inode
   !
   implicit none
@@ -222,7 +221,7 @@ SUBROUTINE calc_chi_corr_trace(chi, chi0, nnu, qv)
         !
         call calc_eig_occ_Skq(ek, ekq, occ_k, occ_kq, Skq, hk, hkq, beta)
         !
-        call calc_partial_chi_corr_trace(chi_part, chi0_part, nnu, nexact, hk, hkq, ek, ekq, occ_k, occ_kq, Skq)
+        call calc_partial_chi_corr_trace(chi_part, chi0_part, nnu, nexact, hk, hkq, ek, ekq, occ_k, occ_kq, Skq, beta)
         !
         chi(:)=chi(:)+chi_part(:)
         chi0(:)=chi0(:)+chi0_part(:)
@@ -236,14 +235,13 @@ SUBROUTINE calc_chi_corr_trace(chi, chi0, nnu, qv)
   !
 END SUBROUTINE
 
-SUBROUTINE calc_partial_chi_corr_trace(chi, chi0, nnu, nexact, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq)
+SUBROUTINE calc_partial_chi_corr_trace(chi, chi0, nnu, nexact, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq, beta)
   !
   ! This subroutine calculates part of the susceptibility (one kpt in the K-mesh),
   !   Parallel over frequency
   !
   use constants, only : dp, eps9, cmplx_0, twopi, cmplx_i, stdout
   use wanndata,  only : norb
-  use impurity,  only : beta
   use para,      only : distribute_calc, first_idx, last_idx, para_merge_cmplx, inode, para_collect_cmplx, para_distribute_cmplx
   !
   implicit none
@@ -252,6 +250,7 @@ SUBROUTINE calc_partial_chi_corr_trace(chi, chi0, nnu, nexact, hk, hkq, eig_k, e
   ! First nnu Matsubara frequencies will be calculated
   integer       :: nexact
   ! We only calculate -nexact to nexact contributions exactly (the difference decays very fast)
+  real(dp)      :: beta
   complex(dp), dimension(nnu) :: chi, chi0
   ! chi: correlated susceptibility
   ! chi0: noninteracting susceptibility
@@ -355,7 +354,7 @@ SUBROUTINE calc_partial_chi_corr_trace(chi, chi0, nnu, nexact, hk, hkq, eig_k, e
   !
 END SUBROUTINE
 
-SUBROUTINE analyze_part_chi_corr_trace(chi, chi0, nnu, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq)
+SUBROUTINE analyze_part_chi_corr_trace(chi, chi0, nnu, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq, beta)
   !
   !  This subroutine analyzes the composition of chi_corr
   !    Please be noted that unlike the calculation subroutine
@@ -364,7 +363,7 @@ SUBROUTINE analyze_part_chi_corr_trace(chi, chi0, nnu, hk, hkq, eig_k, eig_kq, o
   !
   use constants, only : dp, cmplx_0, twopi, cmplx_i
   use wanndata,  only : norb
-  use impurity,  only : nfreq, beta
+  use impurity,  only : nfreq
   use para,      only : first_idx, last_idx, para_merge_cmplx, inode, para_collect_cmplx, para_distribute_cmplx, distribute_calc
   !
   implicit none
@@ -372,6 +371,7 @@ SUBROUTINE analyze_part_chi_corr_trace(chi, chi0, nnu, hk, hkq, eig_k, eig_kq, o
   integer       :: nnu
   complex(dp), dimension(2*nfreq-nnu) :: chi, chi0
   complex(dp), dimension(norb)  :: hk, hkq
+  real(dp)      :: beta
   real(dp), dimension(norb)     :: eig_k, eig_kq, occ_k, occ_kq
   real(dp), dimension(norb, norb) :: Skq
   !
@@ -437,7 +437,7 @@ SUBROUTINE analyze_part_chi_corr_trace(chi, chi0, nnu, hk, hkq, eig_k, eig_kq, o
   !
 END SUBROUTINE
 
-SUBROUTINE analyze_part_chi_corr_trace1(chi, chif, chic, nnu, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq)
+SUBROUTINE analyze_part_chi_corr_trace1(chi, chif, chic, nnu, hk, hkq, eig_k, eig_kq, occ_k, occ_kq, Skq, beta)
   !
   !  This subroutine analyzes the composition of chi_corr
   !    Please be noted that unlike the calculation subroutine
@@ -446,12 +446,13 @@ SUBROUTINE analyze_part_chi_corr_trace1(chi, chif, chic, nnu, hk, hkq, eig_k, ei
   !
   use constants, only : dp, cmplx_0, twopi, cmplx_i
   use wanndata,  only : norb
-  use impurity,  only : nfreq, beta, fulldim, basis_map
+  use impurity,  only : nfreq, fulldim, basis_map
   use para,      only : first_idx, last_idx, para_merge_cmplx, inode, para_collect_cmplx, para_distribute_cmplx, distribute_calc
   !
   implicit none
   !
   integer       :: nnu
+  real(dp)      :: beta
   complex(dp), dimension(2*nfreq-nnu) :: chi, chif, chic
   complex(dp), dimension(norb)  :: hk, hkq
   real(dp), dimension(norb)     :: eig_k, eig_kq, occ_k, occ_kq
@@ -534,14 +535,12 @@ SUBROUTINE analyze_part_chi_corr_trace1(chi, chif, chic, nnu, hk, hkq, eig_k, ei
   !
 END SUBROUTINE
 
-
-
 SUBROUTINE analyze_chi_corr_trace(chi, chi0, nnu, qv)
   !
   use constants,    only : dp, cmplx_0, stdout, eps6
   use wanndata,     only : norb
-  use input,        only : nkx, nky, nkz
-  use impurity,     only : beta, nfreq
+  use input,        only : nkx, nky, nkz, beta
+  use impurity,     only : nfreq
   use para,         only : inode
   !
   implicit none
@@ -602,8 +601,8 @@ SUBROUTINE analyze_chi_corr_trace1(chi, chif, chic, nnu, qv)
   !
   use constants,    only : dp, cmplx_0, stdout, eps6
   use wanndata,     only : norb
-  use input,        only : nkx, nky, nkz
-  use impurity,     only : beta, nfreq
+  use input,        only : nkx, nky, nkz, beta
+  use impurity,     only : nfreq
   use para,         only : inode
   !
   implicit none

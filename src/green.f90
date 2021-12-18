@@ -118,7 +118,8 @@ SUBROUTINE calc_corr_matsgf(gf, hk, iom, inv)
   !
   use constants,        only: dp, cmplx_0, cmplx_i, twopi
   use wanndata,         only: norb
-  use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, ismatsubara, beta
+  use input,            only: beta
+  use impurity,         only: fulldim, basis_map, nfreq, ncol, restore_lattice, sigma, ismatsubara
   use linalgwrap,       only: invmat
   !
   implicit none

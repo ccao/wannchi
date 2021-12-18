@@ -1,9 +1,9 @@
 PROGRAM wannchi
   !
-  use constants,only : stdout, dp, fout, cmplx_i, cmplx_0, eps4
+  use constants,only : stdout, dp, fout, cmplx_i, cmplx_0, eps4, twopi
   use para,     only : init_para, inode, distribute_calc, finalize_para
   use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
-  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu, eps, nen, emesh
+  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu, eps, nen, emesh, beta
   use impurity, only : init_impurity, finalize_impurity, ismatsubara, nfreq
   !
   implicit none
@@ -15,32 +15,35 @@ PROGRAM wannchi
   CALL read_input('wannchi')
   CALL read_ham(seed)
   !
+  if (inode.eq.0) then
+    write(stdout, '(A,1F14.9,A)') "   # Fermi level shifted to ", mu, " eV"
+  endif
+  !
   CALL ham_shift_ef(mu)
   !
   if (level>0) then
-    CALL init_impurity()
+    CALL init_impurity(beta)
     CALL ham_fix_static()
   endif
-  !
-  if (ismatsubara) then
-    call check_beta()
-  else
-    nen=nnu
-    allocate(emesh(nnu), w(nnu))
-    do ii=1, nnu
-      emesh(ii)=(ii-1.d0)*eps
-      w(ii)=emesh(ii)+eps4*cmplx_i
-    enddo
-  endif
-  !
-  allocate(chi0(nnu))
-  if (level>1) allocate(chi(nnu))
-  !allocate(chi(2*nfreq-nnu), chi0(2*nfreq-nnu))
   !
   if (inode.eq.0) then
     open(unit=fout, file='chi.dat')
     if (level<2) call output_header(fout)
   endif
+  !
+  if (ismatsubara) then
+    allocate(w(nnu))
+    do ii=1, nnu
+      w(ii)=(ii-1.d0)*twopi/beta*cmplx_i
+    enddo
+  else
+    nnu=nen
+    allocate(w(nnu))
+    w(:)=emesh(:)+eps*cmplx_i
+  endif
+  !
+  allocate(chi0(nnu))
+  if (level>1) allocate(chi(nnu))
   !
   do iq=1, nqpt
     !
@@ -72,11 +75,6 @@ PROGRAM wannchi
         write(fout, *)
       endif
       !
-      !write(fout, *) "# !!!!! ANALYZE OUTPUT "
-      !do ii=1, 2*nfreq-nnu
-      !  chi_diff=cmplx_1/chi(ii)-cmplx_1/chi0(ii)
-      !  write(fout, '(1F9.2,6G18.9)') ii-nfreq-0.5d0, chi(ii), chi0(ii), chi_diff
-      !enddo
     endif
   enddo
   !
@@ -91,23 +89,3 @@ PROGRAM wannchi
   CALL finalize_para
   !
 END PROGRAM
-
-SUBROUTINE check_beta()
-  !
-  use constants, only : eps4, stdout
-  use impurity,  only : beta
-  use input,     only : beta_in
-  !
-  implicit none
-  !
-  if (abs(beta-beta_in)>eps4) then
-    write(stdout, '(A)') '!!! WARNNING: input beta is not consistent with self-energy!'
-    write(stdout, '(A,2F9.4)') '        The input and sig file beta are:', beta_in, beta
-    write(stdout, '(A)') '      We shall continue using the input self-energy'
-    write(stdout, '(A)') '      But you must know what you are doing!'
-  endif
-  !
-  beta=beta_in
-  !
-END SUBROUTINE
-
