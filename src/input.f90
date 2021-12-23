@@ -64,7 +64,7 @@ CONTAINS
   ! &SYSTEM
   !   seed='wannier90',
   !   beta=2000.d0,
-  !   mu=0.d0
+  !   mu=0.d0,
   ! /
   ! &CONTROL
   !   level=2
@@ -89,6 +89,9 @@ CONTAINS
   ! DEFAULT:
   level=0
   ! Noninteracting caculation
+  ! 1: RPA
+  ! 2: s_oo (static fix)
+  ! 3: dynamic (self energy correction)
   mode=0
   ! Single point calculation
   nkx=1
@@ -137,8 +140,9 @@ CONTAINS
     endif
     !
     if (level==0) write(stdout, '(A)', advance='no') "    Uncorrelated calculation "
-    if (level==1) write(stdout, '(A)', advance='no') "    Correlated static limit calculation "
-    if (level==2) write(stdout, '(A)', advance='no') "    Correlated dynamic calculation "
+    if (level==1) write(stdout, '(A)', advance='no') "    RPA calculation "
+    if (level==2) write(stdout, '(A)', advance='no') "    Correlated static limit calculation "
+    if (level==3) write(stdout, '(A)', advance='no') "    Correlated dynamic calculation "
     !
   endif
   !

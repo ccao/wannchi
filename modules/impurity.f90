@@ -30,6 +30,7 @@ MODULE impurity
   integer, dimension(:), allocatable :: basis_map
   ! Mapping from impurity to lattice
   ! i-th orbital in impurity problem is basis_map(i)-th orbital in lattice problem
+  real(dp), dimension(max_num_imp) :: U_imp, J_imp, V_imp, Jp_imp
   !
   character(len=80) sigfile
   integer ncol
@@ -42,17 +43,18 @@ MODULE impurity
   ! frequency mesh, used only in real-frequency calculations
   complex(dp), dimension(:, :), allocatable :: sigma
   ! Actual self energy
-  namelist /IMPDEF/ ismatsubara, sigfile, ncol, nfreq, nimp, ndim
+  namelist /IMPDEF/ ismatsubara, sigfile, ncol, nfreq, nimp, ndim, U_imp, J_imp, V_imp, Jp_imp
   !
   contains
   !
-  subroutine init_impurity(beta)
+  subroutine init_impurity(beta, level)
     !
-    use para,    only: inode, para_sync_int, para_sync_cmplx
+    use para,    only : inode, para_sync_int, para_sync_cmplx, para_sync_real
     use symmetry_module, only: generate_Ylm2C, symmetry, rotate_J, rotate_cubic, init_symm, inverse_symm
     !
     implicit none
     !
+    integer   :: level
     real(dp)  :: beta
     !
     character(len=80) :: line
@@ -72,6 +74,8 @@ MODULE impurity
     !   nimp=2
     !     ndim(1)=14
     !     ndim(2)=14
+    !     U_imp(1)=6.0, J_imp(1)=0.7
+    !     U_imp(2)=6.0, J_imp(2)=0.7
     ! /
     ! Impurities
     ! BasisMap
@@ -105,6 +109,10 @@ MODULE impurity
     nfreq=1
     nimp=1
     ndim(:)=0
+    U_imp(:)=0.d0
+    J_imp(:)=0.d0
+    V_imp(:)=0.d0
+    Jp_imp(:)=0.d0
     !
     if (inode.eq.0) then
       open(unit=fin, file='impurity.inp')
@@ -126,6 +134,10 @@ MODULE impurity
     nimp=tt(3)
     ismatsubara=(tt(4).eq.1)
     call para_sync_int(ndim, nimp)
+    call para_sync_real(U_imp, nimp)
+    call para_sync_real(J_imp, nimp)
+    call para_sync_real(V_imp, nimp)
+    call para_sync_real(Jp_imp, nimp)
     !
     allocate(omega(nfreq))
     allocate(sigma(ncol, nfreq))
@@ -172,80 +184,82 @@ MODULE impurity
         enddo
         write(stdout, *)
         !
-        read(fin, *) line
-        if (trim(line)/='LocalAxis') then
-          write(*, *) "!!! FATAL ERROR: Incorrect format LocalAxis"
-          stop
-        endif
-        do jj=1, 3
-          read(fin, *) locrot(:, jj)
-        enddo
-        !
-        read(fin, *) line
-        if (trim(line(1:9))/='Sigind') then
-          write(*, *) "!!! FATAL ERROR: Incorrect format Sigind"
-          stop
-        endif
-        do jj=1, ndim(ii)
-          read(fin, *) sigind(1:ndim(ii), jj, ii)
-        enddo
-        !
-        read(fin, *) line
-        if (trim(line(1:9))/='Transform') then
-          write(*, *) "!!! FATAL ERROR: Incorrect format Transform"
-          stop
-        endif
-        do jj=1, ndim(ii)
-          read(fin, *) aa(1:2*ndim(ii))
-          do kk=1, ndim(ii)
-            Utrans(kk, jj, ii)=aa(2*kk-1)+cmplx_i*aa(2*kk)
+        if (level>1) then
+          read(fin, *) line
+          if (trim(line)/='LocalAxis') then
+            write(*, *) "!!! FATAL ERROR: Incorrect format LocalAxis"
+            stop
+          endif
+          do jj=1, 3
+            read(fin, *) locrot(:, jj)
           enddo
-        enddo
-        !
-        ! WE ARE IGNORING ALL POSSIBLE "reduced" SUBSPACE CALCULATIONS HERE!!!
-        !
-        if (mod(ndim(ii)-2, 4).eq.0) then
-          corr_l=(ndim(ii)-2)/4
-        else
-          corr_l=(ndim(ii)-1)/2
-        endif
-        write(stdout, '(A,1I3)') "     L=", corr_l
-        !
-        allocate(umat(ndim(ii), ndim(ii)))
-        allocate(mtmp(ndim(ii), ndim(ii)))
-        allocate(locrot_j(ndim(ii), ndim(ii)))
-        ! WIEN2k has its own "local-axis"
-        !   which has different definition from us
-        !
-        call init_symm(symm, locrot, (/0.d0, 0.d0, 0.d0/))
-        call inverse_symm(symm)
-        locrot_j=cmplx_0
-        umat=cmplx_0
-        mtmp=cmplx_0
-        !
-        if (mod(ndim(ii)-2, 4).eq.0) then
-          ! ndim(ii)=corr_l*4+2 (SOC case)
-          call rotate_J(locrot_j, corr_l, symm)
-          call generate_Ylm2C(umat(1:2*corr_l+1, 1:2*corr_l+1), corr_l)
-          mtmp(1:2*corr_l+1, 1:2*corr_l+1)=umat(1:2*corr_l+1, 1:2*corr_l+1)
-          mtmp(2*corr_l+2:4*corr_l+2, 2*corr_l+2:4*corr_l+2)=umat(1:2*corr_l+1, 1:2*corr_l+1)
-        else
-          ! ndim(ii)=corr_l*2+1 (non SOC case)
-          call rotate_cubic(locrot_j, corr_l, symm)
-          call generate_Ylm2C(mtmp, corr_l)
-        endif
-        !
-        call zgemm('C', 'C', ndim(ii), ndim(ii), ndim(ii), &
-        cmplx_1, locrot_j, ndim(ii), &
-        Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
-        cmplx_0, umat, ndim(ii))
-        !
-        call zgemm('N', 'N', ndim(ii), ndim(ii), ndim(ii), &
-        cmplx_1, umat, ndim(ii), &
-        mtmp, ndim(ii), &
-        cmplx_0, Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii))
-        !
-        deallocate(umat, mtmp, locrot_j)
+          !
+          read(fin, *) line
+          if (trim(line(1:9))/='Sigind') then
+            write(*, *) "!!! FATAL ERROR: Incorrect format Sigind"
+            stop
+          endif
+          do jj=1, ndim(ii)
+            read(fin, *) sigind(1:ndim(ii), jj, ii)
+          enddo
+          !
+          read(fin, *) line
+          if (trim(line(1:9))/='Transform') then
+            write(*, *) "!!! FATAL ERROR: Incorrect format Transform"
+            stop
+          endif
+          do jj=1, ndim(ii)
+            read(fin, *) aa(1:2*ndim(ii))
+            do kk=1, ndim(ii)
+              Utrans(kk, jj, ii)=aa(2*kk-1)+cmplx_i*aa(2*kk)
+            enddo
+          enddo
+          !
+          ! WE ARE IGNORING ALL POSSIBLE "reduced" SUBSPACE CALCULATIONS HERE!!!
+          !
+          if (mod(ndim(ii)-2, 4).eq.0) then
+            corr_l=(ndim(ii)-2)/4
+          else
+            corr_l=(ndim(ii)-1)/2
+          endif
+          write(stdout, '(A,1I3)') "     L=", corr_l
+          !
+          allocate(umat(ndim(ii), ndim(ii)))
+          allocate(mtmp(ndim(ii), ndim(ii)))
+          allocate(locrot_j(ndim(ii), ndim(ii)))
+          ! WIEN2k has its own "local-axis"
+          !   which has different definition from us
+          !
+          call init_symm(symm, locrot, (/0.d0, 0.d0, 0.d0/))
+          call inverse_symm(symm)
+          locrot_j=cmplx_0
+          umat=cmplx_0
+          mtmp=cmplx_0
+          !
+          if (mod(ndim(ii)-2, 4).eq.0) then
+            ! ndim(ii)=corr_l*4+2 (SOC case)
+            call rotate_J(locrot_j, corr_l, symm)
+            call generate_Ylm2C(umat(1:2*corr_l+1, 1:2*corr_l+1), corr_l)
+            mtmp(1:2*corr_l+1, 1:2*corr_l+1)=umat(1:2*corr_l+1, 1:2*corr_l+1)
+            mtmp(2*corr_l+2:4*corr_l+2, 2*corr_l+2:4*corr_l+2)=umat(1:2*corr_l+1, 1:2*corr_l+1)
+          else
+            ! ndim(ii)=corr_l*2+1 (non SOC case)
+            call rotate_cubic(locrot_j, corr_l, symm)
+            call generate_Ylm2C(mtmp, corr_l)
+          endif
+          !
+          call zgemm('C', 'C', ndim(ii), ndim(ii), ndim(ii), &
+          cmplx_1, locrot_j, ndim(ii), &
+          Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii), &
+          cmplx_0, umat, ndim(ii))
+          !
+          call zgemm('N', 'N', ndim(ii), ndim(ii), ndim(ii), &
+          cmplx_1, umat, ndim(ii), &
+          mtmp, ndim(ii), &
+          cmplx_0, Utrans(1:ndim(ii), 1:ndim(ii), ii), ndim(ii))
+          !
+          deallocate(umat, mtmp, locrot_j)
+        endif ! level>1
         !
       enddo ! imp
       !
@@ -278,7 +292,7 @@ MODULE impurity
       enddo
     endif
     !
-    call read_siginp(sigfile, beta)
+    if (level>1) call read_siginp(sigfile, beta)
     !
   end subroutine
   !

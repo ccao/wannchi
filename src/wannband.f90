@@ -23,7 +23,7 @@ PROGRAM wannband
   CALL ham_shift_ef(mu)
   !
   if (level>0) then
-    CALL init_impurity(beta)
+    CALL init_impurity(beta, level)
     CALL ham_fix_static()
   endif
   !
