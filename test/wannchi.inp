@@ -5,9 +5,10 @@
   spectra_calc = .false.
 /
 &control
-  use_lehman = .true.
+  use_lehman = .false.
   trace_only = .false.
   ff_only    = .false.
+  npade = 40
 
   fast_calc  = .true.
   nnu=1

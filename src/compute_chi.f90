@@ -27,10 +27,15 @@ MODULE chi_internal
   complex(dp), dimension(:, :, :), allocatable :: Uk_full
   complex(dp), dimension(:, :, :), allocatable :: Uk_local, Ukq_local
   !
-  ! THESE VARIABLES ARE USED IF G*G ALGORITHM IS EMPLOYED
+  ! THESE VARIABLES ARE USED IF G*G ALGORITHM IS EMPLOYED (for correlated case)
   !
-  complex(dp), dimension(:, :, :), allocatable :: Hff_full, Hff_k, Hff_kq
-  complex(dp), dimension(:, :, :), allocatable :: Vfc_full, Vfc_k, Vfc_kq
+  complex(dp), dimension(:, :, :), allocatable :: Hff_k, Hff_kq
+  complex(dp), dimension(:, :, :), allocatable :: Vfc_k, Vfc_kq
+  real(dp), dimension(:, :), allocatable       :: Ecc_k, Ecc_kq
+  !
+  ! THESE VARIABLES ARE USED IF G*G FAST ALGORITHM IS EMPLOYED (for correlated case)
+  !
+  complex(dp), dimension(:, :, :), allocatable :: Hff_full,  Vfc_full
   real(dp), dimension(:, :), allocatable       :: Ecc_full
   !
   ! THESE VARIABLES ARE USED FOR FULL MATRIX CALCULATIONS
@@ -123,6 +128,43 @@ MODULE chi_internal
     endif
     !
   end subroutine
+
+  subroutine init_chi_internal_GG(fast_calc)
+    !
+    use constants, only : dp
+    use lattice,   only : ham, nkirr
+    use para,      only : first_idx, last_idx, inode
+    !
+    implicit none
+    !
+    logical fast_calc
+    !
+    ! These are always required in any cases...
+    !
+    allocate(ek(ham%norb), ekq(ham%norb))
+    allocate(hk(ham%norb, ham%norb), hkq(ham%norb, ham%norb))
+    !
+    if (fast_calc) then
+      !
+      allocate(kq_idx(nkirr))
+      !
+      allocate(eig_full(ham%norb, nkirr))
+      !
+      if (inode.eq.0) then
+        !
+        allocate(Uk_full(ham%norb, ham%norb, nkirr))
+        !
+      else
+        !
+        allocate(Uk_full(1, 1, 1))
+        !
+      endif
+      !
+      allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
+      !
+    endif
+    !
+  end subroutine
   !
 END MODULE
 
@@ -189,6 +231,60 @@ SUBROUTINE prepare_lehman
   endif
   !
 END SUBROUTINE
+
+SUBROUTINE prepare_GG
+  !
+  use constants,  only : dp
+  use input,      only : beta, nnu, fast_calc, trace_only, npade
+  use lattice,    only : nkirr, ham, kvec
+  use wanndata,   only : calc_hk, finalize_wann
+  use para,       only : distribute_calc, first_idx, last_idx, para_collect_cmplx, para_merge_real, inode
+  use linalgwrap, only : eigen
+  use chi_internal, only : hk, eig_full, Uk_full, Uk_local, init_chi_internal_GG, init_chi_matrix
+  use pade_sum,   only : init_pade
+  !
+  implicit none
+  !
+  integer ik, ii
+  !
+  call init_chi_matrix(nnu)
+  !
+  call init_pade(npade, .true.)
+  !
+  if (fast_calc) then
+    ! Do Full Kmesh diagonalization beforehand
+    !    in case of fast calculation
+    !
+    call distribute_calc(nkirr)
+    ! Always parallel in Kmesh in fast calculations
+    !
+    call init_chi_internal_GG(fast_calc)
+    !
+    eig_full=0.0
+    !
+    do ik=first_idx, last_idx
+      !
+      call calc_hk(hk, ham, kvec(:, ik))
+      !
+      call eigen(eig_full(:, ik), hk, ham%norb)
+      !
+      Uk_local(:, :, ik-first_idx+1)=hk(:, :)
+      !
+    enddo
+    !
+    call finalize_wann(ham, .false.)
+    !
+    call para_merge_real(eig_full, ham%norb*nkirr)
+    call para_collect_cmplx(Uk_full, Uk_local, ham%norb*ham%norb)
+    !
+  else
+    !
+    call init_chi_internal_GG(fast_calc)
+    !
+  endif
+  !
+END SUBROUTINE
+
 
 SUBROUTINE calc_chi_bare_trace_lehman_kernel(chi0, w, nw)
   !
@@ -460,7 +556,7 @@ SUBROUTINE calc_chi_bare_matrix_lehman_kernel(w, nw)
           !
           call zgerc(nFFidx, nFFidx, fact(ii), UUf, 1, UUf, 1, chiff(:, :, ii), nFFidx)
           !
-          if (ndimc>0) then
+          if (nCCidx>0) then
             !
             call zgerc(nFFidx, nCCidx, fact(ii), UUf, 1, UUc, 1, chifc(:, :, ii), nFFidx)
             call zgerc(nCCidx, nFFidx, fact(ii), UUc, 1, UUf, 1, chicf(:, :, ii), nCCidx)
@@ -607,6 +703,240 @@ SUBROUTINE calc_chi_bare_matrix_lehman_fast(chi0, w, nw, qv)
     enddo
     !
     call calc_chi_bare_matrix_lehman_kernel(w, nw)
+    !
+  enddo
+  !
+  call para_merge_cmplx(chiff, nFFidx*nFFidx*nw)
+  chiff=chiff/nkirr
+  !
+  if (nCCidx>0) then
+    !
+    call para_merge_cmplx(chicf, nCCidx*nFFidx*nw)
+    call para_merge_cmplx(chifc, nFFidx*nCCidx*nw)
+    call para_merge_cmplx(chicc, nCCidx*nCCidx*nw)
+    !
+    chifc=chifc/nkirr
+    chicf=chicf/nkirr
+    chicc=chicc/nkirr
+    !
+  endif
+  !
+  call calc_chi_trace_from_matrix(chi0, nw)
+  !
+END SUBROUTINE
+
+SUBROUTINE calc_chi_bare_matrix_GG_kernel(w, nw)
+  !
+  use constants,    only : dp, cmplx_1, cmplx_0, cmplx_i
+  use lattice,      only : ham
+  use input,        only : beta
+  use chi_internal, only : hk, hkq, ek, ekq, chiff, chicc, chifc, chicf
+  use IntRPA,       only : nFFidx, nCCidx, FFidx, CCidx
+  use pade_sum,     only : npole, zp, eta
+  !
+  implicit none
+  !
+  integer                    :: nw
+  complex(dp), dimension(nw) :: w
+  !
+  integer ibnd, jbnd
+  integer ii, iw, i1, i2
+  complex(dp), dimension(nw) :: fact
+  complex(dp) :: z1, z2, g1, g2
+  !
+  complex(dp), dimension(nFFidx) :: UUf
+  complex(dp), dimension(nCCidx) :: UUc
+  !
+  do ibnd=1, ham%norb
+    do jbnd=1, ham%norb
+      !
+      fact(:)=cmplx_0
+      !
+      do ii=1, npole
+        !
+        z1=zp(ii)/beta*cmplx_i
+        g1=cmplx_1/(z1-ek(ibnd))
+        !
+        do iw=1, nw
+          z2=z1+w(iw)
+          g2=cmplx_1/(z2-ekq(jbnd))
+          fact(iw)=fact(iw)+eta(ii)*g1*g2
+        enddo
+        !
+        z1=-zp(ii)/beta*cmplx_i
+        g1=cmplx_1/(z1-ek(ibnd))
+        !
+        do iw=1, nw
+          z2=z1+w(iw)
+          g2=cmplx_1/(z2-ekq(jbnd))
+          fact(iw)=fact(iw)+eta(ii)*g1*g2
+        enddo
+        !
+      enddo
+      !
+      fact(:)=-fact(:)/beta
+      !
+      do ii=1, nFFidx
+        !
+        i1=FFidx(1, ii)
+        i2=FFidx(2, ii)
+        !
+        UUf(ii)=conjg(hk(i1, ibnd))*hkq(i2, jbnd)
+        !
+      enddo
+      !
+      do ii=1, nCCidx
+        !
+        i1=CCidx(ii)
+        !
+        UUc(ii)=conjg(hk(i1, ibnd))*hkq(i1, jbnd)
+        !
+      enddo
+      !
+      ! call zgerc(m, n, alpha, x, incx, y, incy, a, lda)
+      ! A=alpha * x * conjg(y') + A
+      !
+      do ii=1, nw
+        !
+        call zgerc(nFFidx, nFFidx, fact(ii), UUf, 1, UUf, 1, chiff(:, :, ii), nFFidx)
+        !
+        if (nCCidx>0) then
+          !
+          call zgerc(nFFidx, nCCidx, fact(ii), UUf, 1, UUc, 1, chifc(:, :, ii), nFFidx)
+          call zgerc(nCCidx, nFFidx, fact(ii), UUc, 1, UUf, 1, chicf(:, :, ii), nCCidx)
+          call zgerc(nCCidx, nCCidx, fact(ii), UUc, 1, UUc, 1, chicc(:, :, ii), nCCidx)
+          !
+        endif
+        !
+      enddo
+      !
+    enddo ! jbnd
+  enddo ! ibnd
+  !
+END SUBROUTINE
+
+SUBROUTINE calc_chi_bare_matrix_GG(chi0, w, nw, qv)
+  !
+  ! This subroutine calculates susceptibility matrix at qv
+  !   of frequency w
+  !
+  use constants,    only : dp, cmplx_0, stdout
+  use input,        only : beta
+  use wanndata,     only : calc_hk
+  use lattice,      only : nkirr, kvec, ham
+  use linalgwrap,   only : eigen
+  use chi_internal, only : hk, hkq, ek, ekq, chiff, chicc, chifc, chicf
+  use para,         only : para_merge_cmplx, distribute_calc, first_idx, last_idx
+  use IntRPA,       only : nCCidx, nFFidx
+  !
+  implicit none
+  !
+  integer nw
+  !
+  complex(dp), dimension(nw) :: chi0, w
+  real(dp),    dimension(3)  :: qv
+  !
+  real(dp),    dimension(3)  :: kq
+  integer                    :: ik, iw
+  !
+  chiff=cmplx_0
+  !
+  if (nCCidx>0) then
+    !
+    chicc=cmplx_0
+    chifc=cmplx_0
+    chicf=cmplx_0
+    !
+  endif
+  !
+  call distribute_calc(nkirr)
+  !
+  do ik=first_idx, last_idx
+    !
+    call calc_hk(hk, ham, kvec(:, ik))
+    call eigen(ek, hk, ham%norb)
+    !
+    kq=kvec(:, ik)+qv(:)
+    call calc_hk(hkq, ham, kq)
+    call eigen(ekq, hkq, ham%norb)
+    !
+    call calc_chi_bare_matrix_GG_kernel(w, nw)
+    !
+  enddo
+  !
+  call para_merge_cmplx(chiff, nFFidx*nFFidx*nw)
+  chiff=chiff/nkirr
+  !
+  if (nCCidx>0) then
+    !
+    call para_merge_cmplx(chicf, nCCidx*nFFidx*nw)
+    call para_merge_cmplx(chifc, nFFidx*nCCidx*nw)
+    call para_merge_cmplx(chicc, nCCidx*nCCidx*nw)
+    !
+    chifc=chifc/nkirr
+    chicf=chicf/nkirr
+    chicc=chicc/nkirr
+    !
+  endif
+  !
+  call calc_chi_trace_from_matrix(chi0, nw)
+  !
+END SUBROUTINE
+
+SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
+  !
+  use constants,    only : dp, cmplx_0, stdout, twopi
+  use wanndata,     only : calc_hk
+  use lattice,      only : nkirr, kvec, ham
+  use para,         only : para_merge_cmplx, first_idx, last_idx
+  use IntRPA,       only : nCCidx, nFFidx
+  use chi_internal, only : ek, ekq, eig_full, hk, hkq, Uk_local, Ukq_local, kq_idx, chiff, chifc, chicf, chicc
+  !
+  implicit none
+  !
+  integer nw
+  !
+  complex(dp), dimension(nw) :: chi0, w
+  real(dp),    dimension(3)  :: qv
+  !
+  integer                    :: ik, ii, jj
+  real(dp), dimension(3, last_idx-first_idx+1)  :: kq_local
+  real(dp),    dimension(3)  :: DG
+  real(dp)                   :: GdotTau
+  complex(dp)                :: extra_phase
+  complex(dp)                :: fact
+  !
+  chi0=cmplx_0
+  !
+  do ik=first_idx, last_idx
+    !
+    kq_local(:, ik-first_idx+1)=kvec(:, ik)+qv(:)
+    !
+  enddo
+  ! Locate k+q elements in node 0 and populate
+  call find_idx_in_kmesh(kq_local)
+  call reorder_and_distribute_Ukq()
+  !
+  do ik=first_idx, last_idx
+    !
+    ek(:)=eig_full(:, ik)
+    ekq(:)=eig_full(:, kq_idx(ik))
+    !
+    hk(:, :)=Uk_local(:, :, ik-first_idx+1)
+    hkq(:, :)=Ukq_local(:, :, ik-first_idx+1)
+    !
+    ! Fix the phase due to site position
+    DG(:)=kq_local(:, ik-first_idx+1)-kvec(:, kq_idx(ik))
+    !
+    do ii=1, ham%norb
+      !
+      GdotTau=SUM(DG(:)*ham%tau(:, ii))*twopi
+      extra_phase=CMPLX(cos(GdotTau), sin(GdotTau), KIND=dp)
+      hkq(ii, :)=conjg(extra_phase)*hkq(ii, :)
+      !
+    enddo
+    !
+    call calc_chi_bare_matrix_GG_kernel(w, nw)
     !
   enddo
   !

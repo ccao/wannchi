@@ -48,7 +48,7 @@ MODULE input
   integer npade
   ! Number of Poles in Pade Summation
   !
-  namelist /CONTROL/ use_lehman, trace_only, ff_only, fast_calc, eps, nnu, emin, emax
+  namelist /CONTROL/ use_lehman, trace_only, ff_only, fast_calc, eps, nnu, emin, emax, npade
   namelist /SYSTEM/ spectra_calc, seed, beta, mu
   !
 CONTAINS
@@ -65,7 +65,7 @@ CONTAINS
   !
   character(len=80) line
   !
-  integer, dimension(6)  :: tt_int
+  integer, dimension(8)  :: tt_int
   real(dp), dimension(5) :: tt_real
   integer ii
   !
@@ -150,12 +150,13 @@ CONTAINS
     if (ff_only)      tt_int(4) = 1
     if (fast_calc)    tt_int(5) = 1
     tt_int(6) = nnu
+    tt_int(7) = npade
     !
     tt_real(:)=(/eps, emin, emax, beta, mu/);
     !
   endif
   !
-  call para_sync_int(tt_int, 6)
+  call para_sync_int(tt_int, 7)
   !
   spectra_calc = (tt_int(1).eq.1)
   use_lehman   = (tt_int(2).eq.1)
@@ -163,6 +164,7 @@ CONTAINS
   ff_only      = (tt_int(4).eq.1)
   fast_calc    = (tt_int(5).eq.1)
   nnu          =  tt_int(6)
+  npade        =  tt_int(7)
   !
   call para_sync_real(tt_real, 5)
   eps  = tt_real(1)

@@ -6,6 +6,7 @@ PROGRAM wannchi
   use para,         only : init_para, inode, distribute_calc, finalize_para
   use input,        only : read_input, read_qpoints, mu, nqpt, qvec, use_lehman, fast_calc, trace_only, ff_only, nnu, nu, seed, finalize_input
   use IntRPA,       only : read_RPA
+  use pade_sum,     only : print_pade
   !
   implicit none
   !
@@ -33,6 +34,10 @@ PROGRAM wannchi
     call prepare_lehman
     !
   else
+    !
+    call prepare_GG
+    !
+    call print_pade
     !
   endif
   !
@@ -75,6 +80,11 @@ PROGRAM wannchi
       !
     else
       ! Use G*G
+      if (fast_calc) then
+        call calc_chi_bare_matrix_GG_fast(chi0, nu, nnu, qvec(:, iq))
+      else
+        call calc_chi_bare_matrix_GG(chi0, nu, nnu, qvec(:, iq))
+      endif
       !
     endif
     !
