@@ -1,5 +1,24 @@
 MODULE para
   !
+  ! This module encapsules the operations with MPI
+  !   BRIEFS:
+  !     Initialize 
+  !         by calling   init_para
+  !     Finalize 
+  !         by calling   finalize_para
+  !     Distribute Calculation
+  !         by calling   distribute_calc
+  !     Synchronize calculation process
+  !         by calling   para_barrier
+  !     Synchronize data
+  !         by calling   para_sync_TYPE
+  !     Summing up data from all process
+  !         by calling   para_merge_TYPE
+  !     Distribute data to all process
+  !         by calling   para_distribute_TYPE
+  !     Collect data from all process
+  !         by calling   para_collect_TYPE
+  !
   use mpi
   !
   implicit none
@@ -8,8 +27,12 @@ MODULE para
   integer first_idx, last_idx
   integer, dimension(:, :), allocatable :: map
   !
+  interface para_sync0
+    module procedure para_sync_int0, para_sync_real0
+  end interface
+  !    
   interface para_merge0
-    module procedure para_merge_cmplx0
+    module procedure para_merge_cmplx0, para_merge_real0
   end interface
   !
 CONTAINS
@@ -65,6 +88,33 @@ SUBROUTINE init_para(codename)
   !
 END SUBROUTINE
 
+SUBROUTINE para_barrier()
+  !
+  implicit none
+  !
+#if defined __MPI
+  !
+  integer ierr
+  CALL mpi_barrier(mpi_comm_world, ierr)
+  !
+#endif
+  !
+END SUBROUTINE
+
+SUBROUTINE para_sync_int0(dat)
+  !
+  implicit none
+  !
+  integer :: dat
+  !
+#if defined __MPI
+  !
+  integer ierr
+  CALL mpi_bcast(dat, 1, MPI_INTEGER, 0, mpi_comm_world, ierr)
+#endif
+  !
+END SUBROUTINE
+
 SUBROUTINE para_sync_int(dat, dat_size)
   !
   implicit none
@@ -93,6 +143,22 @@ SUBROUTINE para_sync_real(dat, dat_size)
   !
   integer ierr
   CALL mpi_bcast(dat, dat_size, MPI_DOUBLE_PRECISION, 0, mpi_comm_world, ierr)
+#endif
+  !
+END SUBROUTINE
+
+SUBROUTINE para_sync_real0(dat)
+  !
+  use constants, only: dp
+  !
+  implicit none
+  !
+  real(dp) :: dat
+  !
+#if defined __MPI
+  !
+  integer ierr
+  CALL mpi_bcast(dat, 1, MPI_DOUBLE_PRECISION, 0, mpi_comm_world, ierr)
 #endif
   !
 END SUBROUTINE
@@ -127,6 +193,23 @@ SUBROUTINE para_merge_int(dat, dat_size)
   !
   integer ierr
   CALL mpi_allreduce(MPI_IN_PLACE, dat, dat_size, MPI_INTEGER, MPI_SUM, mpi_comm_world, ierr)
+#endif
+  !
+END SUBROUTINE
+
+SUBROUTINE para_merge_real0(dat)
+  !
+  use constants, only : dp
+  !
+  implicit none
+  !
+  real(dp) :: dat
+  !
+#if defined __MPI
+  !
+  integer ierr
+  CALL mpi_allreduce(MPI_IN_PLACE, dat, 1, MPI_DOUBLE_PRECISION, MPI_SUM, mpi_comm_world, ierr)
+  !
 #endif
   !
 END SUBROUTINE
@@ -178,6 +261,25 @@ SUBROUTINE para_merge_cmplx(dat, dat_size)
   !
   integer ierr
   CALL mpi_allreduce(MPI_IN_PLACE, dat, dat_size, MPI_DOUBLE_COMPLEX, MPI_SUM, mpi_comm_world, ierr)
+#endif
+  !
+END SUBROUTINE
+
+SUBROUTINE para_collect_int(fulldat, dat)
+  !
+  use constants, only : dp
+  implicit none
+  !
+  integer :: fulldat(*)
+  complex(dp) :: dat(*)
+  !
+#if defined __MPI
+  !
+  ! We need to use mpi_type
+  integer ierr
+  !
+  call mpi_gatherv(dat, map(inode+1, 2), MPI_INTEGER, fulldat, map(:, 2), map(:, 1), MPI_INTEGER, 0, mpi_comm_world, ierr)
+  !
 #endif
   !
 END SUBROUTINE

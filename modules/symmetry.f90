@@ -3,6 +3,25 @@
 !
 !   This file defines symmetry operations
 !
+  !   BRIEFS:
+  !     Initialize 
+  !         by calling   init_symm with angle/axis or matrix
+  !     Generate <Ylm | C>
+  !         by calling   generate_Ylm2C
+  !     Generate <Ylm | L | Ylm'>
+  !         by calling   generate_Lmatrix
+  !     Generate <sigma | S | sigma'>
+  !         by calling   generate_Smatrix
+  !     Vector rotation
+  !         by calling   rotate_vector
+  !     Ylm basis rotation
+  !         by calling   rotate_Ylm
+  !     Ylms basis rotation
+  !         by calling   rotate_Ylms
+  !     Cubic basis rotation
+  !         by calling   rotate_cubic
+  !     Finalize not required 
+  !
 MODULE symmetry_module
   !
   use constants
@@ -153,19 +172,17 @@ MODULE symmetry_module
     !
   END SUBROUTINE
 
-  SUBROUTINE rotate_J(rot, l, symm)
+  SUBROUTINE rotate_Ylms(rot, l, symm)
     !
-    integer, intent(in)          :: l
-    complex(dp), dimension(4*l+2, 4*l+2), intent(out)   :: rot
-    TYPE(symmetry), intent(in)   :: symm
+    integer, intent(in) :: l
+    TYPE(symmetry), intent(in) :: symm
+    complex(dp), dimension(4*l+2, 4*l+2), intent(out) :: rot
     !
     complex(dp), dimension(2*l+1, 2*l+1) :: rotYlm
     complex(dp), dimension(2, 2) :: rotSpin
-    complex(dp), dimension(4*l+2, 4*l+2) :: Ylm2J, rot_tmp
     !
     CALL rotate_spinor(rotSpin, symm)
     CALL rotate_Ylm(rotYlm, l, symm)
-    CALL generate_Ylms2JBasis(Ylm2J, l)
     !
     rot=cmplx_0
     rot(1:2*l+1, 1:2*l+1)=rotSpin(1,1)*rotYlm(:,:)
@@ -173,10 +190,23 @@ MODULE symmetry_module
     rot(2*l+2:4*l+2, 1:2*l+1)=rotSpin(2,1)*rotYlm(:,:)
     rot(2*l+2:4*l+2, 2*l+2:4*l+2)=rotSpin(2,2)*rotYlm(:,:)
     !
+  END SUBROUTINE
+
+  SUBROUTINE rotate_J(rot, l, symm)
+    !
+    integer, intent(in)          :: l
+    complex(dp), dimension(4*l+2, 4*l+2), intent(out)   :: rot
+    TYPE(symmetry), intent(in)   :: symm
+    !
+    complex(dp), dimension(4*l+2, 4*l+2) :: Ylm2J, rot_tmp
+    !
+    call rotate_Ylms(rot, l, symm)
+    CALL generate_Ylms2JBasis(Ylm2J, l)
+    !
     !call zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
     call zgemm('N', 'N', 4*l+2, 4*l+2, 4*l+2, cmplx_1, rot, 4*l+2, Ylm2J, 4*l+2, cmplx_0, rot_tmp, 4*l+2)
-    call zgemm('T', 'N', 4*l+2, 4*l+2, 4*l+2, cmplx_1, Ylm2J, 4*l+2, rot_tmp, 4*l+2, cmplx_0, rot, 4*l+2)
-    !rot=transpose_phys_op(Ylm2J)*rot_tmp*Ylm2J
+    call zgemm('C', 'N', 4*l+2, 4*l+2, 4*l+2, cmplx_1, Ylm2J, 4*l+2, rot_tmp, 4*l+2, cmplx_0, rot, 4*l+2)
+    !rot=hermitian_phys_op(Ylm2J)*rot_tmp*Ylm2J
     !
   END SUBROUTINE
 
@@ -200,10 +230,15 @@ MODULE symmetry_module
     !
     if ((abs(symm%theta)<eps4).or.(l.eq.0)) then
       !
+      rot=cmplx_0
       if (symm%inv.and.(mod(l,2).eq.1)) then
-        rot=-cmplx_1
+        do ii=1, 2*l+1
+          rot(ii, ii)=-cmplx_1
+        enddo
       else
-        rot=cmplx_1
+        do ii=1, 2*l+1
+          rot(ii, ii)=cmplx_1
+        enddo
       endif
       !
     else
@@ -344,6 +379,9 @@ MODULE symmetry_module
           symm%axis=vr(:, ii)
         endif
       enddo
+    else
+      symm%theta=0.d0
+      symm%axis=(/0.d0, 0.d0, 1.d0/)
     endif
     !
   END SUBROUTINE

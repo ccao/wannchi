@@ -1,10 +1,33 @@
-wannier90
-7.43565158 0.0  0.0  1.0d-4
-20 20 20
-0
-0.2 0.2 0.2
+&system
+  seed='symm'
+  beta=100.d0,
+  mu=2.0
+  spectra_calc = .false.
+/
+&control
+  use_lehman = .true.
+  trace_only = .false.
+  ff_only    = .false.
 
-1
-2  5
-0.0 0.0 0.0
-0.5 0.5 0.5
+  fast_calc  = .true.
+  nnu=1
+/
+
+  ! &SYSTEM
+  !   seed='wannier90',
+  !   beta=2000.d0,
+  !   mu=0.d0,
+  !   spectra_calc = .false.
+  ! /
+  ! &CONTROL
+  !   use_lehman=.false.
+  !   trace_only=.false.
+  !   ff_only  = .true.
+  !   fast_calc=.true.
+  !   npade=80
+  !   nnu=1
+  !   ! eps=0.001  ! Only Used for Spectra
+  !   ! emin=0.0   !
+  !   ! emax=0.0
+  ! /
+

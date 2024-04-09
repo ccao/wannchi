@@ -1,64 +1,51 @@
 PROGRAM wannchi
   !
-  use constants,only : stdout, dp, fout, cmplx_i, cmplx_0, eps4, twopi
-  use para,     only : init_para, inode, distribute_calc, finalize_para
-  use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
-  use input,    only : read_input, seed, qvec, nqpt, mu, level, finalize_input, nnu, eps, nen, emesh, beta, xq
-  use impurity, only : init_impurity, finalize_impurity, ismatsubara, nfreq
-  use chi_internal, only : init_chi_internal, finalize_chi_internal
+  use constants,    only : stdout, dp, fout
+  use lattice,      only : read_posfile, read_kmesh, ham
+  use wanndata,     only : read_ham, wannham_shift_ef, finalize_wann
+  use para,         only : init_para, inode, distribute_calc, finalize_para
+  use input,        only : read_input, read_qpoints, mu, nqpt, qvec, use_lehman, fast_calc, trace_only, ff_only, nnu, nu, seed, finalize_input
+  use IntRPA,       only : read_RPA
   !
   implicit none
   !
-  complex(dp), dimension(:), allocatable :: chiS, chiC, chi, chi0, w
+  complex(dp), dimension(:), allocatable :: chi0
   integer iq, ii
   !
-  CALL init_para('wannchi')
+  CALL init_para('WannChi')
   CALL read_input('wannchi')
-  CALL read_ham(seed)
+  !
+  CALL read_ham(ham, seed)
+  CALL wannham_shift_ef(ham, mu)
+  !
+  CALL read_kmesh("IBZKPT")
+  !
+  CALL read_qpoints
+  !
+  if (.not.trace_only) CALL read_RPA
   !
   if (inode.eq.0) then
     write(stdout, '(A,1F14.9,A)') "   # Fermi level shifted to ", mu, " eV"
   endif
   !
-  CALL ham_shift_ef(mu)
-  !
-  if (level>0) CALL init_impurity(beta, level)
-  call init_chi_internal()
-  if (level>1) CALL ham_fix_static()
-  !
-  if (ismatsubara) then
-    allocate(w(nnu))
-    do ii=1, nnu
-      w(ii)=(ii-1.d0)*twopi/beta*cmplx_i
-    enddo
+  if (use_lehman) then
+    !
+    call prepare_lehman
+    !
   else
-    nnu=nen
-    allocate(w(nnu))
-    w(:)=emesh(:)+eps*cmplx_i
-  endif
-  !
-  if (inode.eq.0) then
-    open(unit=fout, file='chi0.dat')
-    if (nnu>1) call output_header(fout)
-    close(fout)
-    if (level.eq.1) then
-      open(unit=fout, file='chiS.dat')
-      if (nnu>1) call output_header(fout)
-      close(fout)
-      open(unit=fout, file='chiC.dat')
-      if (nnu>1) call output_header(fout)
-      close(fout)
-    endif
-    if (level>1) then
-      open(unit=fout, file='chiSigma.dat')
-      if (nnu>1) call output_header(fout)
-      close(fout)
-    endif
+    !
   endif
   !
   allocate(chi0(nnu))
-  if (level.eq.1) allocate(chiS(nnu), chiC(nnu))
-  if (level>1) allocate(chi(nnu))
+  !
+  if (inode.eq.0) then
+    !
+    open(unit=fout, file='chi0tr.dat')
+    !
+    !                    1...5...9.1...1...5...9.1...1...5...9.1...||1...5...9.1...1...5...9.1...||1...5...9.1...5...9.1.1...5...9.1...5...9.1.
+    write(fout, '(A)') "# ================= qvec ================= || ========== w(i) ========== || ================ Tr[chi0] ================ "
+    !
+  endif
   !
   do iq=1, nqpt
     !
@@ -66,60 +53,58 @@ PROGRAM wannchi
       write(stdout, '(A,1I5)') 'Calculating qvec #', iq
     endif
     !
-    select case(level)
-    case (0)
-      call calc_chi_bare_trace(chi0, w, nnu, qvec(:, iq))
-    case (1)
-      call calc_chi_rpa_trace(chiS, chiC, chi0, w, nnu, qvec(:, iq))
-    case (2)
-      call calc_chi_bare_trace(chi0, w, nnu, qvec(:, iq))
-    case (3)
-      call calc_chi_corr_trace(chi, chi0, nnu, qvec(:,iq))
-    end select
+    if (use_lehman) then
+      !
+      if (trace_only) then
+        !
+        if (fast_calc) then
+          call calc_chi_bare_trace_lehman_fast(chi0, nu, nnu, qvec(:, iq))
+        else
+          call calc_chi_bare_trace_lehman(chi0, nu, nnu, qvec(:, iq))
+        endif
+        !
+      else
+        ! Full matrix
+        if (fast_calc) then
+          call calc_chi_bare_matrix_lehman_fast(chi0, nu, nnu, qvec(:, iq))
+        else
+          call calc_chi_bare_matrix_lehman(chi0, nu, nnu, qvec(:, iq))
+        endif
+        !
+      endif
+      !
+    else
+      ! Use G*G
+      !
+    endif
     !
     if (inode.eq.0) then
-      open(unit=fout, file='chi0.dat', access='append')
-      if (nnu>1) then
-        call output_chi(chi0, fout, nqpt)
-      else
-        write(fout, '(3F14.9,2X,2G18.9)'), qvec(:, iq), chi0(1)
-      endif
-      close(fout)
-      if (level.eq.1) then
-        open(unit=fout, file='chiS.dat', access='append')
-        if (nnu>1) then
-          call output_chi(chiS, fout, nqpt)
+      !
+      do ii=1, nnu
+        write(fout, '(3F14.9,2X,2F14.9,2X,2G22.12)') qvec(:, iq), nu(ii), chi0(ii)
+      enddo
+      !
+      if (.not.trace_only) then
+        ! Full matrix to binary files
+        !
+        if (ff_only) then
+          !
+          !
         else
-          write(fout, '(3F14.9,2X,2G18.9)'), qvec(:, iq), chiS(1)
-        endif  
-        close(fout)
-        open(unit=fout, file='chiC.dat', access='append')
-        if (nnu>1) then
-          call output_chi(chiC, fout, nqpt)
-        else
-          write(fout, '(3F14.9,2X,2G18.9)'), qvec(:, iq), chiC(1)
-        endif  
-        close(fout)
+          !
+          !
+        endif
+        !
       endif
-      if (level>1) then
-        open(unit=fout, file='chiSigma.dat', access='append')
-        if (nnu>1) then
-          call output_chi(chi, fout, nqpt)
-        else
-          write(fout, '(3F14.9,2X,2G18.9)'), qvec(:, iq), chi(1)
-        endif  
-        close(fout)
-      endif
+      !
     endif
   enddo
   !
   deallocate(chi0)
-  if (level>1) deallocate(chi)
   !
   if (inode.eq.0) close(unit=fout)
   !
-  CALL finalize_wann
-  CALL finalize_impurity
+  CALL finalize_wann(ham, .true.)
   CALL finalize_input
   CALL finalize_para
   !

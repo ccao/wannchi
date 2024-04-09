@@ -4,274 +4,316 @@ MODULE input
   !
   implicit none
   !
-  real(dp), dimension(3, 3) :: acell
-  ! Lattice vectors acell(3, 3)
-  real(dp), dimension(3, 3) :: bcell
-  ! Reciprocal lattice vectors bcell(3,3)
+  character(len=80) seed
+  ! SeedName
+  !
+  real(dp) mu, beta
+  ! Fermi level and System temperature
+  !
   integer nqpt
   ! Number of qpts
+  !
   real(dp), dimension(:, :), allocatable :: qvec
   ! qvectors: qvec(3, iq)
-  real(dp) mu, beta, eps
   !
   integer nnu
-  ! Number of matsubara frequencies to be calculated
-  integer nexact
-  ! Number of exact Matsubara frequency GFs to be calculated
+  ! Number of frequencies to be calculated
   !
-  integer  nkx, nky, nkz
-  ! Kmesh in interpolation
-  integer  nen
-  real(dp) :: emin, emax
-  real(dp), dimension(:), allocatable :: emesh
+  real(dp) emin, emax
+  ! (In case of spectrum calculation)
+  ! emin, emax and nnu determines nu
   !
-  !These are used to output the header
-  integer nqsec
-  real(dp), dimension(:), allocatable :: xq
-  character(len=5), dimension(:), allocatable :: xlabel
+  real(dp) eps
+  ! Input infinitesmal
   !
-  integer level
-  ! Calculation level
-  integer mode
-  ! Calculation mode
+  complex(dp), dimension(:), allocatable :: nu
+  ! In case of Matsubara calculation
+  ! nu is determined by beta and nnu
   !
-  character(len=80) seed
+  logical spectra_calc
+  ! Calculate on real axis? (spectra calculation)
   !
-  namelist /CONTROL/ level, mode, nkx, nky, nkz, nnu, nexact, nen, emin, emax, eps
-  namelist /SYSTEM/ seed, beta, mu
+  logical trace_only
+  ! Calculate only trace of Chi
+  !
+  logical ff_only
+  ! Calculate only interaction part
+  !
+  logical use_lehman
+  ! Use Lehman Representation To Calculate
+  !
+  logical fast_calc
+  ! Use fast algorithm (more memory required)
+  !
+  integer npade
+  ! Number of Poles in Pade Summation
+  !
+  namelist /CONTROL/ use_lehman, trace_only, ff_only, fast_calc, eps, nnu, emin, emax
+  namelist /SYSTEM/ spectra_calc, seed, beta, mu
   !
 CONTAINS
   !
  SUBROUTINE read_input(codename)
   !
   !
-  use constants, only : dp, eps4, fin, fout
+  use constants, only : dp, eps6, fin, fout
   use para,      only : inode, para_sync_int, para_sync_real
-  use linalgwrap, only : invmat
   !
   implicit none
   !
   character(*) codename
   !
   character(len=80) line
-  integer nq_per_sec, iqsec, iq
-  integer iqx, iqy, iqz
-  real(dp), allocatable :: qbnd_vec(:, :)
+  !
+  integer, dimension(6)  :: tt_int
   real(dp), dimension(5) :: tt_real
-  integer, dimension(8) :: tt_int
-  !character dir
-  ! INPUT FILE:
+  integer ii
+  !
+  ! Example INPUT FILE:
   ! &SYSTEM
   !   seed='wannier90',
   !   beta=2000.d0,
   !   mu=0.d0,
+  !   spectra_calc = .false.
   ! /
   ! &CONTROL
-  !   level=2
-  !   mode=1
-  !   nkx=48
-  !   nky=48
-  !   nkz=48
-  !   nnu=64
-  !   nexact=4000
-  !   nen=5001
-  !   emin=-3.d0
-  !   emax=2.d0
-  !   eps=0.001
+  !   use_lehman=.false.
+  !   trace_only=.false.
+  !   ff_only  = .true.
+  !   fast_calc=.true.
+  !   npade=80
+  !   nnu=1
+  !   ! eps=0.001  ! Only Used for Spectra
+  !   ! emin=0.0   !
+  !   ! emax=0.0
   ! /
-  ! CELL
-  !   1.d0 0.d0 0.d0
-  !   0.d0 1.d0 0.d0
-  !   0.d0 0.d0 1.d0
-  ! QPOINTS
-  !   0.0 0.0 0.0
   !
   ! DEFAULT:
-  level=0
-  ! Noninteracting caculation
-  ! 1: RPA
-  ! 2: s_oo (static fix)
-  ! 3: dynamic (self energy correction)
-  mode=0
-  ! Single point calculation
-  nkx=1
-  nky=1
-  nkz=1
-  ! Gamma Point
-  nnu=1
-  ! Calculate only single frequency
-  nexact=0
   !
-  nen=1
-  ! Single frequency
-  emin=0.d0
-  emax=0.d0
-  ! Default at Fermi level
   seed='wannier90'
   ! Default seed name
+  !
   beta=1e7
   ! Very low T calculation (~0K)
+  !
   mu=0.d0
   ! Default Fermi level 
-  eps=eps4
+  !
+  spectra_calc = .false.
+  ! Calculate on imaginary frequency
+  !
+  use_lehman = .false.
+  ! Use G*G algorithm
+  !
+  trace_only = .false.
+  ! Only calculate trace
+  !
+  ff_only    = .true.
+  ! Calculate only the interaction part
+  !
+  fast_calc = .true.
+  ! Use more memory
+  !
+  npade=80
+  ! 80 Pade Poles
+  !
+  nnu=1
+  ! Calculate only single frequency
+  !
+  eps=eps6
   ! Default small imaginary part
+  !
+  emin=0.0
+  ! Default at Ef
+  !
+  emax=0.0
+  ! 
+  ! logical spectra_calc, use_lehman, trace_only, ff_only, fast_calc
+  ! real    eps, emin, emax, beta, mu
+  ! integer nnu
+  !
   if (inode.eq.0) then
+    ! Read Structure Input
+    !
     open(unit=fin, file=trim(codename)//".inp")
     !
     read(nml=SYSTEM, unit=fin)
     read(nml=CONTROL, unit=fin)
     !
-    tt_int(:)=(/level, mode, nkx, nky, nkz, nnu, nexact, nen/);
-    tt_real(:)=(/emin, emax, eps, beta, mu/);
+    close(unit=fin)
     !
-    read(fin, *) line
+    tt_int(:)=0
     !
-    if (trim(line)/='CELL') then
-      write(*, *) "!!! FATAL ERROR: Input format incorrect, CELL?"
-      stop
-    endif
-    do iq=1, 3
-      read(fin, *) acell(:, iq)
-    enddo
-    read(fin, *) line
-    if (trim(line)/='QPOINTS') then
-      write(*, *) "!!! FATAL ERROR: Input format incorrect, QPOINT?"
-      stop
-    endif
+    if (spectra_calc) tt_int(1) = 1
+    if (use_lehman)   tt_int(2) = 1
+    if (trace_only)   tt_int(3) = 1
+    if (ff_only)      tt_int(4) = 1
+    if (fast_calc)    tt_int(5) = 1
+    tt_int(6) = nnu
     !
-    if (level==0) write(stdout, '(A)', advance='no') "    Uncorrelated calculation "
-    if (level==1) write(stdout, '(A)', advance='no') "    RPA calculation "
-    if (level==2) write(stdout, '(A)', advance='no') "    Correlated static limit calculation "
-    if (level==3) write(stdout, '(A)', advance='no') "    Correlated dynamic calculation "
+    tt_real(:)=(/eps, emin, emax, beta, mu/);
     !
   endif
   !
-  call para_sync_int(tt_int, 8)
-  level=tt_int(1)
-  mode=tt_int(2)
-  nkx=tt_int(3)
-  nky=tt_int(4)
-  nkz=tt_int(5)
-  nnu=tt_int(6)
-  nexact=tt_int(7)
-  nen=tt_int(8)
+  call para_sync_int(tt_int, 6)
+  !
+  spectra_calc = (tt_int(1).eq.1)
+  use_lehman   = (tt_int(2).eq.1)
+  trace_only   = (tt_int(3).eq.1)
+  ff_only      = (tt_int(4).eq.1)
+  fast_calc    = (tt_int(5).eq.1)
+  nnu          =  tt_int(6)
   !
   call para_sync_real(tt_real, 5)
-  emin=tt_real(1)
-  emax=tt_real(2)
-  eps=tt_real(3)
-  beta=tt_real(4)
-  mu=tt_real(5)
+  eps  = tt_real(1)
+  emin = tt_real(2)
+  emax = tt_real(3)
+  beta = tt_real(4)
+  mu   = tt_real(5)
   !
-  allocate(emesh(nen))
+  allocate(nu(nnu))
   !
-  if (nen>1) then
-    do iq=1, nen
-      emesh(iq)=emin+(emax-emin)*(iq-1)/(nen-1)
+  if (spectra_calc) then
+    !
+    do ii=1, nnu
+      nu(ii)=emin+(emax-emin)*(ii-1)/(nnu-1)
     enddo
+    !
   else
-    emesh(1)=emin
+    !
+    do ii=1, nnu
+      nu(ii)=twopi*(ii-1)/beta
+    enddo
+    !
   endif
   !
-  call para_sync_real(acell, 9)
-  bcell=acell
-  call invmat(bcell, 3)
-  !
   if (beta<0) beta=1.d7
-  if (eps>eps4.or.eps<eps9) eps=eps4
+  if (eps>eps4.or.eps<eps9) eps=eps6
   !
-  select case (mode)
-    case (0)
-      nqpt=1
-      allocate(qvec(1:3, 1:1))
-      if (inode.eq.0) then
-        write(stdout, '(A)') "of a single point"
-        read(fin, *) qvec(:, 1)
-      endif
-      call para_sync_real(qvec, 3*nqpt)
-    case (1)
-      if (inode.eq.0) then
-        write(stdout, '(A)') "of band structure"
-        read(fin, *) tt_int(1:2)
-      endif
-      call para_sync_int(tt_int, 2)
-      nqsec=tt_int(1)
-      nq_per_sec=tt_int(2)
-      nqpt=(nqsec-1)*nq_per_sec+1
-      allocate(qbnd_vec(1:3, 1:nqsec))
-      allocate(qvec(1:3, nqpt))
-      allocate(xq(nqsec))
-      allocate(xlabel(nqsec))
-      !
-      if (inode.eq.0) then
-        do iqsec=1, nqsec
-          read(fin, *) qbnd_vec(:, iqsec), xlabel(iqsec)
-          if (iqsec==1) then
-            xq(iqsec)=0.d0
-          else
-            tt_real(1:3)=qbnd_vec(:, iqsec)-qbnd_vec(:,iqsec-1)
-            do iqx=1, 3
-              tt_real(3+iqx)=sum(bcell(iqx,:)*tt_real(1:3))
-            enddo
-            xq(iqsec)=xq(iqsec-1)+sqrt(sum(tt_real(4:6)**2))
-          endif
-        enddo
-        !
-        do iqsec=1, nqsec-1
-          do iq=1, nq_per_sec
-            qvec(:, (iqsec-1)*nq_per_sec+iq)=qbnd_vec(:, iqsec)+(qbnd_vec(:, iqsec+1)-qbnd_vec(:, iqsec))*(iq-1)/nq_per_sec
-          enddo
-        enddo
-        qvec(:, nqpt)=qbnd_vec(:, nqsec)
-        deallocate(qbnd_vec)
-      endif
-      !
-      call para_sync_real(qvec, 3*nqpt)
-      call para_sync_real(xq, nqsec)
-    case (2)
-      if (inode.eq.0) then
-        write(stdout, '(A)') "of a plane"
-      endif
-      nqpt=nkx*nky
-      allocate(qvec(1:3, 1:nqpt))
-      do iqx=1, nkx
-        do iqy=1, nky
-          iq=(iqy-1)*nkx+iqx
-          qvec(1, iq)=(iqx-1.d0)/nkx
-          qvec(2, iq)=(iqy-1.d0)/nky
-          qvec(3, iq)=0.d0
-        enddo
-      enddo
-    case (3)
-      if (inode.eq.0) then
-        write(stdout, '(A)') "of bulk"
-      endif
-      nqpt=nkx*nky*nkz
-      allocate(qvec(1:3, 1:nqpt))
-      do iqx=1, nkx
-        do iqy=1, nky
-          do iqz=1, nkz
-            iq=(iqz-1)*nkx*nky+(iqy-1)*nkx+iqx
-            qvec(1, iq)=(iqx-1.d0)/nkx
-            qvec(2, iq)=(iqy-1.d0)/nky
-            qvec(3, iq)=(iqz-1.d0)/nkz
-          enddo
-        enddo
-      enddo
-  end select
-  !
-  if (inode.eq.0) close(unit=fin)
   !
  END SUBROUTINE
+  !
+ SUBROUTINE read_qpoints()
+  !
+  use constants, only : dp, fin
+  use para,      only : inode, para_sync_int, para_sync_real
+  !
+  implicit none
+  !
+  integer mode
+  integer nq1, nq2, nq3
+  integer iq1, iq2, iq3
+  real(dp), dimension(3) :: tq1, tq2, tq0
+  integer, dimension(4) :: tt
+  !
+  if (inode.eq.0) then
+    !
+    open(unit=fin, file="QPOINTS")
+    !
+    ! QPOINTS Example 1
+    !   0           ! Single Point Calculation
+    !  0.5 0.5 0.5  ! Qvec
+    !
+    ! QPOINTS Example 2
+    !   1           ! Line mode
+    !   1  48       !  nseg   ninterpolate
+    ! 0.0  0.0  0.0    0.5  0.0  0.0  ! seg 1: Q1  Q2
+    !
+    ! QPOINTS Example 3
+    !   2           ! Plane mode
+    !  48  48       ! nint1  nint2
+    ! 0.0  0.0  0.0 ! Vertex
+    ! 1.0  0.0  0.0 ! Direction 1
+    ! 0.0  1.0  0.0 ! Direction 2
+    !
+    ! QPOINTS Example 4
+    !   3           ! Full BZ
+    !  48  48  48   ! nint1  nint2  nint3
+    !
+    read(fin, *) mode
+    !
+    if (mode.eq.0) then
+      nqpt=1
+      nq1=1
+      nq2=1
+      nq3=1
+    elseif (mode.eq.1) then
+      nq3=1
+      read(fin, *) nq1, nq2
+      nqpt=nq1*(nq2+1)
+    elseif (mode.eq.2) then
+      nq3=1
+      read(fin, *) nq1, nq2
+      nqpt=(nq1+1)*(nq2+1)
+    elseif (mode.eq.3) then
+      read(fin, *) nq1, nq2, nq3
+      nqpt=nq1*nq2*nq3
+    endif
+    !
+    tt(1)=nq1
+    tt(2)=nq2
+    tt(3)=nq3
+    tt(4)=nqpt 
+    !
+  endif
+  !
+  call para_sync_int(tt, 4)
+  !
+  nq1=tt(1)
+  nq2=tt(2)
+  nq3=tt(3)
+  nqpt=tt(4)
+  !
+  allocate(qvec(3, nqpt))
+  !
+  if (inode.eq.0) then
+    !
+    if (mode.eq.0) then
+      read(fin, *) qvec(:, 1)
+    elseif (mode.eq.1) then
+      do iq1=0, nq1-1
+        read(fin, *) tq1(:), tq2(:)
+        do iq2=0, nq2
+          qvec(:, iq1*(nq2+1)+iq2+1)=tq1 + (iq2*1.d0)/nq2*tq2
+        enddo
+      enddo
+    elseif (mode.eq.2) then
+      read(fin, *) tq0
+      read(fin, *) tq1
+      read(fin, *) tq2
+      !
+      do iq1=0, nq1
+        do iq2=0, nq2
+          qvec(:, iq1*(nq2+1)+iq2+1)=tq0 + (iq1*1.d0)/nq1*tq1 + (iq2*1.d0)/nq2*tq2
+        enddo
+      enddo
+    elseif (mode.eq.3) then
+      do iq1=0, nq1-1
+        do iq2=0, nq2-1
+          do iq3=0, nq3-1
+            qvec(1, iq1*nq2*nq3+iq2*nq3+iq3+1) = iq1*1.d0/nq1
+            qvec(2, iq1*nq2*nq3+iq2*nq3+iq3+1) = iq2*1.d0/nq2
+            qvec(3, iq1*nq2*nq3+iq2*nq3+iq3+1) = iq3*1.d0/nq3
+          enddo
+        enddo
+      enddo
+    endif
+    !
+    close(fin)
+    !
+  endif
+  !
+  call para_sync_real(qvec, nqpt*3)
+  !
+ END SUBROUTINE
+
   !
  SUBROUTINE finalize_input
   !
   implicit none
   !
+  if (allocated(nu))   deallocate(nu)
   if (allocated(qvec)) deallocate(qvec)
-  if (allocated(emesh)) deallocate(emesh)
-  if (allocated(xq)) deallocate(xq)
-  if (allocated(xlabel)) deallocate(xlabel)
   !
  END SUBROUTINE
   !
