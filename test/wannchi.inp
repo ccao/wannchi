@@ -5,12 +5,12 @@
   spectra_calc = .true.
 /
 &control
-  use_lehman = .true.
+  use_lehman = .false.
   trace_only = .false.
   ff_only    = .false.
   npade = 40
 
-  fast_calc  = .false.
+  fast_calc  = .true.
   nnu=2
   emin = 0.0
   emax = 0.5

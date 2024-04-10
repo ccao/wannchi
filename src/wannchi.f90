@@ -7,7 +7,7 @@ PROGRAM wannchi
   use input,        only : read_input, read_qpoints, mu, nqpt, qvec, use_lehman, fast_calc, trace_only, ff_only, nnu, nu, seed, finalize_input
   use IntRPA,       only : read_RPA, finalize_RPA
   use pade_sum,     only : print_pade, finalize_pade
-  use chi_internal, only : finalize_chi_internal, show_chi_diag
+  use chi_internal, only : finalize_chi_internal, show_chi_diag, save_chi_matrix
   !
   implicit none
   !
@@ -109,9 +109,11 @@ PROGRAM wannchi
         !
         if (ff_only) then
           !
+          call save_chi_matrix(iq, nnu, .true.)
           !
         else
           !
+          call save_chi_matrix(iq, nnu, .false.)
           !
         endif
         !

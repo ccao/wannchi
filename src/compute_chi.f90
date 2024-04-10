@@ -42,12 +42,20 @@ MODULE chi_internal
   !
   complex(dp), dimension(:, :, :), allocatable :: chiff, chicc, chifc, chicf
   !
-  !
   contains
   !
   subroutine finalize_chi_internal()
     !
+    use constants,    only : fout3, fout4, fout5, fout6
+    !
     implicit none
+    !
+    logical isopen
+    !
+    if (allocated(chiff))         deallocate(chiff)
+    if (allocated(chicc))         deallocate(chicc)
+    if (allocated(chifc))         deallocate(chifc)
+    if (allocated(chicf))         deallocate(chicf)
     !
     if (allocated(ek))            deallocate(ek)
     if (allocated(ekq))           deallocate(ekq)
@@ -72,11 +80,23 @@ MODULE chi_internal
     if (allocated(Vfc_kq))        deallocate(Vfc_kq)
     if (allocated(Ecc_full))      deallocate(Ecc_fulL)
     !
+    inquire(unit=fout3, opened=isopen)
+    if (isopen) close(unit=fout3)
+    !
+    inquire(unit=fout4, opened=isopen)
+    if (isopen) close(unit=fout4)
+    !
+    inquire(unit=fout5, opened=isopen)
+    if (isopen) close(unit=fout5)
+    !
+    inquire(unit=fout6, opened=isopen)
+    if (isopen) close(unit=fout6)
+    !
   end subroutine
 
   subroutine init_chi_matrix(nw)
     !
-    use constants, only : dp
+    use constants, only : dp, fout3, fout4, fout5, fout6
     use lattice,   only : ham, nkirr
     use para,      only : first_idx, last_idx, inode
     use IntRPA,    only : nFFidx, nCCidx
@@ -86,9 +106,25 @@ MODULE chi_internal
     integer nw
     !
     allocate(chiff(nFFidx, nFFidx, nw))
-    allocate(chifc(nFFidx, nCCidx, nw))
-    allocate(chicf(nCCidx, nFFidx, nw))
-    allocate(chicc(nCCidx, nCCidx, nw))
+    !
+    if (nCCidx>0) then
+      !
+      allocate(chifc(nFFidx, nCCidx, nw))
+      allocate(chicf(nCCidx, nFFidx, nw))
+      allocate(chicc(nCCidx, nCCidx, nw))
+      !
+    endif
+    !
+    if (inode.eq.0) then
+      !
+      open(unit=fout3, file='chiff.dat', form='unformatted', access='direct', recl=nFFidx*nFFidx*16)
+      if (nCCidx>0) then
+        open(unit=fout4, file='chicc.dat', form='unformatted', access='direct', recl=nCCidx*nCCidx*16)
+        open(unit=fout5, file='chifc.dat', form='unformatted', access='direct', recl=nFFidx*nCCidx*16)
+        open(unit=fout6, file='chicf.dat', form='unformatted', access='direct', recl=nCCidx*nFFidx*16)
+      endif
+      !
+    endif
     !
   end subroutine
 
@@ -162,6 +198,60 @@ MODULE chi_internal
       !
       allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
       !
+    endif
+    !
+  end subroutine
+
+  subroutine save_chi_matrix(idx, nn, ff_only)
+    !
+    use constants, only : fout3, fout4, fout5, fout6
+    use para,      only : inode
+    use IntRPA,    only : nCCidx, nFFidx
+    !
+    implicit none
+    !
+    integer idx, nn
+    logical ff_only
+    integer ii
+    !
+    if (inode.eq.0) then
+      do ii=1, nn
+        write(fout3, rec=idx+ii-1) chiff(:, :, ii)
+        !
+        if ((.not. ff_only).and.(nCCidx.ne.0)) then
+          write(fout4, rec=idx+ii-1) chicc(:, :, ii)
+          write(fout5, rec=idx+ii-1) chifc(:, :, ii)
+          write(fout6, rec=idx+ii-1) chicf(:, :, ii)
+        endif
+        !
+      enddo
+    endif
+    !
+  end subroutine
+
+  subroutine read_chi_matrix(idx, nn, ff_only)
+    !
+    use constants, only : fout3, fout4, fout5, fout6
+    use para,      only : inode
+    use IntRPA,    only : nCCidx, nFFidx
+    !
+    implicit none
+    !
+    integer idx, nn
+    logical ff_only
+    integer ii
+    !
+    if (inode.eq.0) then
+      do ii=1, nn
+        read(fout3, rec=idx+ii-1) chiff(:, :, ii)
+        !
+        if ((.not. ff_only).and.(nCCidx.ne.0)) then
+          read(fout4, rec=idx+ii-1) chicc(:, :, ii)
+          read(fout5, rec=idx+ii-1) chifc(:, :, ii)
+          read(fout6, rec=idx+ii-1) chicf(:, :, ii)
+        endif
+        !
+      enddo
     endif
     !
   end subroutine
