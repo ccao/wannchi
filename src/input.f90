@@ -56,7 +56,7 @@ CONTAINS
  SUBROUTINE read_input(codename)
   !
   !
-  use constants, only : dp, eps6, fin, fout
+  use constants, only : dp, eps4, eps9, eps12, fin, fout
   use para,      only : inode, para_sync_int, para_sync_real
   !
   implicit none
@@ -173,6 +173,9 @@ CONTAINS
   beta = tt_real(4)
   mu   = tt_real(5)
   !
+  if (beta<0) beta=1.d7
+  if (eps>eps4.or.eps<eps12) eps=eps9
+  !
   allocate(nu(nnu))
   !
   if (spectra_calc) then
@@ -185,6 +188,8 @@ CONTAINS
       nu(1)=emin
     endif
     !
+    nu(:)=nu(:)+eps*cmplx_i
+    !
   else
     !
     do ii=1, nnu
@@ -192,9 +197,6 @@ CONTAINS
     enddo
     !
   endif
-  !
-  if (beta<0) beta=1.d7
-  if (eps>eps4.or.eps<eps9) eps=eps6
   !
  END SUBROUTINE
   !
