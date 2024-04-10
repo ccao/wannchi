@@ -714,7 +714,15 @@ SUBROUTINE calc_chi_bare_matrix_lehman_fast(chi0, w, nw, qv)
   complex(dp)                :: extra_phase
   complex(dp)                :: fact
   !
-  chi0=cmplx_0
+  chiff=cmplx_0
+  !
+  if (nCCidx>0) then
+    !
+    chicc=cmplx_0
+    chifc=cmplx_0
+    chicf=cmplx_0
+    !
+  endif
   !
   do ik=first_idx, last_idx
     !
@@ -1080,7 +1088,6 @@ SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
     !
     do ii=1, ham%norb
       !
-      !write(*, '(A,2I5,3F9.4)') "inode, ii, tau:", inode, ii, ham%tau(:, ii)
       GdotTau=SUM(DG(:)*ham%tau(:, ii))*twopi
       extra_phase=CMPLX(cos(GdotTau), sin(GdotTau), KIND=dp)
       hkq(ii, :)=conjg(extra_phase)*hkq(ii, :)
