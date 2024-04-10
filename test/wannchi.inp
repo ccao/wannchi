@@ -2,7 +2,7 @@
   seed='symm'
   beta=100.d0,
   mu=2.0
-  spectra_calc = .false.
+  spectra_calc = .true.
 /
 &control
   use_lehman = .false.
@@ -11,7 +11,9 @@
   npade = 40
 
   fast_calc  = .true.
-  nnu=1
+  nnu=2
+  emin = 0.0
+  emax = 0.5
 /
 
   ! &SYSTEM

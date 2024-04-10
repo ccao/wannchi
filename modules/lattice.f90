@@ -199,9 +199,8 @@ MODULE lattice
     !  Line 7..nsite+6 :  Zat   X1  X2  X3  Nbasis
     !
     use constants,    only : dp, fin
-    use para,         only : inode, para_sync0, para_sync_real, para_sync_int
+    use para,         only : inode, para_sync_int0, para_sync_int, para_sync_real
     use linalgwrap,   only : invmat
-    use wanndata,     only : wannham
     !
     implicit none
     !
@@ -234,7 +233,8 @@ MODULE lattice
     call para_sync_real(avec, 9)
     call para_sync_real(bvec, 9)
     !
-    call para_sync0(nsite)
+    call para_sync_int0(nsite)
+    call para_sync_int0(ispin)
     !
     allocate(xat(3, nsite))
     allocate(zat(nsite))
@@ -243,10 +243,7 @@ MODULE lattice
     if (inode.eq.0) then
       !
       do ii=1, nsite
-        !
-        read(fin, *) zat(ii), xx, nbasis(ii)
-        xat(:, ii)=xx(:)
-        !
+        read(fin, *) zat(ii), xat(:, ii), nbasis(ii)
       enddo
       !
       close(unit=fin)
@@ -255,7 +252,7 @@ MODULE lattice
     !
     call para_sync_int(zat, nsite)
     call para_sync_int(nbasis, nsite)
-    call para_sync_real(xat, nsite*3)
+    call para_sync_real(xat, 3*nsite)
     !
     nn=1
     do ii=1, nsite
@@ -278,7 +275,7 @@ MODULE lattice
   !
   subroutine read_kmesh(fn)
     !
-    use constants,     only : dp, fin
+    use constants,     only : dp, fin, stdout
     use para,          only : inode, para_sync_int, para_sync_real
     !
     implicit none
@@ -338,6 +335,8 @@ MODULE lattice
           enddo
         enddo
         !
+        iik=0
+        !
       else
         ! IBZKPT form
         do iik=1, nkirr
@@ -355,6 +354,16 @@ MODULE lattice
     call para_sync_real(kvec, nkirr*3)
     !
     kwt(:)=kwt(:)/SUM(kwt(:))
+    !
+    if (inode.eq.0) then
+      !
+      if (iik==0) then
+        write(stdout, '(A)', advance='no') " Automatically Generated K-mesh of "
+        write(stdout, '(1I5,1A1,1I5,1A1,1I5)') nk1, 'x', nk2, 'x', nk3
+      else
+        write(stdout, '(A,1I5,A)') " Specified K-mesh of ", nkirr, " K-points"
+      endif
+    endif
     !
   end subroutine
   !

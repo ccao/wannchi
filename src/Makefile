@@ -1,6 +1,6 @@
 include ../make.sys
 
-objects = input.o compute_chi.o
+objects = input.o compute_chi.o green.o
 
 LIBS = ../modules/mod.a
 

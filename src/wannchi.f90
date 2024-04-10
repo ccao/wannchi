@@ -5,8 +5,9 @@ PROGRAM wannchi
   use wanndata,     only : read_ham, wannham_shift_ef, finalize_wann
   use para,         only : init_para, inode, distribute_calc, finalize_para
   use input,        only : read_input, read_qpoints, mu, nqpt, qvec, use_lehman, fast_calc, trace_only, ff_only, nnu, nu, seed, finalize_input
-  use IntRPA,       only : read_RPA
-  use pade_sum,     only : print_pade
+  use IntRPA,       only : read_RPA, finalize_RPA
+  use pade_sum,     only : print_pade, finalize_pade
+  use chi_internal, only : finalize_chi_internal, show_chi_diag
   !
   implicit none
   !
@@ -18,6 +19,8 @@ PROGRAM wannchi
   !
   CALL read_ham(ham, seed)
   CALL wannham_shift_ef(ham, mu)
+  !
+  CALL read_posfile(trim(seed)//".pos")
   !
   CALL read_kmesh("IBZKPT")
   !
@@ -90,6 +93,13 @@ PROGRAM wannchi
     !
     if (inode.eq.0) then
       !
+      if (.not. trace_only) then
+        !
+        write(stdout, *) " Chi0 at first frequency:"
+        call show_chi_diag(stdout, 1)
+        !
+      endif
+      !
       do ii=1, nnu
         write(fout, '(3F14.9,2X,2F14.9,2X,2G22.12)') qvec(:, iq), nu(ii), chi0(ii)
       enddo
@@ -110,10 +120,14 @@ PROGRAM wannchi
     endif
   enddo
   !
+  if (inode.eq.0) write(stdout, *) "All Done."
+  !
   deallocate(chi0)
   !
   if (inode.eq.0) close(unit=fout)
   !
+  CALL finalize_chi_internal
+  CALL finalize_RPA
   CALL finalize_wann(ham, .true.)
   CALL finalize_input
   CALL finalize_para

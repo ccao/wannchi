@@ -11,7 +11,7 @@ CC=icc
 
 
 F90=mpif90
-F90FLAGS= -mavx -D__MPI -D_INTEL
+F90FLAGS= -march=core-avx2 -fma -D__MPI -D_INTEL
 
 INCLUDES=-I$(MKLINCLUDE) -I../modules -I. -I$(MKLROOT)/include/intel64/lp64
 

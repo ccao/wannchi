@@ -171,6 +171,11 @@ SUBROUTINE read_ham(ham, seed)
   allocate(ham%rvec(3, ham%nrpt))
   allocate(ham%tau(3, ham%norb))
   !
+  ! site position initialized to 0
+  !   They are to be read from POSCAR file
+  !
+  ham%tau(:,:)=0.d0
+  !
   if (inode.eq.0) then
     write(stdout, *) "    # of orbitals:", ham%norb
     write(stdout, *) "    # of real-space grid:", ham%nrpt
@@ -202,11 +207,6 @@ SUBROUTINE read_ham(ham, seed)
   CALL para_sync_real(ham%weight, ham%nrpt)
   CALL para_sync_real(ham%rvec, 3*ham%nrpt)
   CALL para_sync0(ham%r000)
-  !
-  ! site position initialized to 0
-  !   They are to be read from POSCAR file
-  !
-  ham%tau(:,:)=0.d0
   !
   !if(inode.eq.0) then
   !  !

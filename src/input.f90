@@ -192,7 +192,6 @@ CONTAINS
   if (beta<0) beta=1.d7
   if (eps>eps4.or.eps<eps9) eps=eps6
   !
-  !
  END SUBROUTINE
   !
  SUBROUTINE read_qpoints()

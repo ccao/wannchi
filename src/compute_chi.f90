@@ -165,6 +165,52 @@ MODULE chi_internal
     endif
     !
   end subroutine
+
+  subroutine show_chi_diag(iou, iw)
+    !
+    use IntRPA,    only : nFFidx, nCCidx
+    !
+    implicit none
+    !
+    integer iou, iw
+    integer ii
+    !
+    if (.not. allocated(chiff)) then
+      !
+      write(*, *) "!!! INTERNAL ERROR, requires full matrix?"
+      stop
+      !
+    endif
+    !
+    write(iou, *) "  Diagonal elements in FF:"
+    write(iou, *) "    Real Part:"
+    do ii=1, nFFidx
+      write(iou, '(1F14.9)', advance='no') real(chiff(ii, ii, iw))
+    enddo
+    write(iou, *)
+    write(iou, *) "    Imag Part:"
+    do ii=1, nFFidx
+      write(iou, '(1F14.9)', advance='no') aimag(chiff(ii, ii, iw))
+    enddo
+    write(iou, *)
+    !
+    if (nCCidx>0) then
+      !
+      write(iou, *) "  Diagonal elements in CC:"
+      write(iou, *) "    Real Part:"
+      do ii=1, nCCidx
+        write(iou, '(1F14.9)', advance='no') real(chicc(ii, ii, iw))
+      enddo
+      write(iou, *)
+      write(iou, *) "    Imag Part:"
+      do ii=1, nCCidx
+        write(iou, '(1F14.9)', advance='no') aimag(chicc(ii, ii, iw))
+      enddo
+      write(iou, *)
+      !
+    endif
+    !
+  end subroutine
   !
 END MODULE
 
@@ -284,7 +330,6 @@ SUBROUTINE prepare_GG
   endif
   !
 END SUBROUTINE
-
 
 SUBROUTINE calc_chi_bare_trace_lehman_kernel(chi0, w, nw)
   !
@@ -725,6 +770,84 @@ SUBROUTINE calc_chi_bare_matrix_lehman_fast(chi0, w, nw, qv)
   !
 END SUBROUTINE
 
+SUBROUTINE calc_chi_bare_matrix_GG_test(w, nw)
+  !
+  use constants,    only : dp, cmplx_1, cmplx_0, cmplx_i, stdout
+  use lattice,      only : ham
+  use input,        only : beta
+  use chi_internal, only : hk, hkq, ek, ekq, chiff, chicc, chifc, chicf
+  use IntRPA,       only : nFFidx, nCCidx, FFidx, CCidx
+  use pade_sum,     only : npole, zp, eta
+  !
+  implicit none
+  !
+  integer                    :: nw
+  complex(dp), dimension(nw) :: w
+  !
+  complex(dp), dimension(nw) :: fact
+  complex(dp), dimension(ham%norb, ham%norb) :: gk, gkq
+  complex(dp) :: z1, z2
+  !
+  integer iw, ii, i1, i2, jj, j1, j2, ipole
+  !
+  do ipole=1, npole
+    !
+    z1=zp(ipole)/beta*cmplx_i
+    call calc_g0(gk, hk, z1, ham%norb, .false.)
+    !
+    do iw=1, nw
+      !
+      z2=z1+w(iw)
+      call calc_g0(gkq, hkq, z2, ham%norb, .false.)
+      !
+      do ii=1, nFFidx
+        !
+        i1=FFidx(1, ii)
+        i2=FFidx(2, ii)
+        !
+        do jj=1, nFFidx
+          !
+          j1=FFidx(1, jj)
+          j2=FFidx(2, jj)
+          !
+          chiff(ii, jj, iw)=chiff(ii, jj, iw)+eta(ipole)*gk(i1, j1)*gkq(j2, i2)/beta
+          !
+        enddo ! jj
+        !
+      enddo   ! ii
+      !
+    enddo ! iw
+    !
+    z1=-zp(ipole)/beta*cmplx_i
+    call calc_g0(gk, hk, z1, ham%norb, .false.)
+    !
+    do iw=1, nw
+      !
+      z2=z1+w(iw)
+      call calc_g0(gkq, hkq, z2, ham%norb, .false.)
+      !
+      do ii=1, nFFidx
+        !
+        i1=FFidx(1, ii)
+        i2=FFidx(2, ii)
+        !
+        do jj=1, nFFidx
+          !
+          j1=FFidx(1, jj)
+          j2=FFidx(2, jj)
+          !
+          chiff(ii, jj, iw)=chiff(ii, jj, iw)+eta(ipole)*gk(i1, j1)*gkq(j2, i2)/beta
+          !
+        enddo ! jj
+        !
+      enddo   ! ii
+      !
+    enddo ! iw
+    !
+  enddo   ! ipole
+  !
+END SUBROUTINE
+
 SUBROUTINE calc_chi_bare_matrix_GG_kernel(w, nw)
   !
   use constants,    only : dp, cmplx_1, cmplx_0, cmplx_i
@@ -789,9 +912,13 @@ SUBROUTINE calc_chi_bare_matrix_GG_kernel(w, nw)
         !
         i1=CCidx(ii)
         !
-        UUc(ii)=conjg(hk(i1, ibnd))*hkq(i1, jbnd)
+        UUc(ii)=conjg(hk(i1, ibnd))*hkq(i1, ibnd)
         !
       enddo
+      !write(*, *) "ibnd, jbnd:", ibnd, jbnd
+      !write(*, '(2F14.9)') ek(ibnd), ekq(jbnd)
+      !write(*, *) "UUf: "
+      !write(*, '(18F9.4)') UUf
       !
       ! call zgerc(m, n, alpha, x, incx, y, incy, a, lda)
       ! A=alpha * x * conjg(y') + A
@@ -799,6 +926,9 @@ SUBROUTINE calc_chi_bare_matrix_GG_kernel(w, nw)
       do ii=1, nw
         !
         call zgerc(nFFidx, nFFidx, fact(ii), UUf, 1, UUf, 1, chiff(:, :, ii), nFFidx)
+        !
+        !write(*, *) "chiFF : "
+        !call show_matrix(chiff(:, :, 1), nFFidx, stdout)
         !
         if (nCCidx>0) then
           !
@@ -820,7 +950,7 @@ SUBROUTINE calc_chi_bare_matrix_GG(chi0, w, nw, qv)
   ! This subroutine calculates susceptibility matrix at qv
   !   of frequency w
   !
-  use constants,    only : dp, cmplx_0, stdout
+  use constants,    only : dp, cmplx_0
   use input,        only : beta
   use wanndata,     only : calc_hk
   use lattice,      only : nkirr, kvec, ham
@@ -853,12 +983,25 @@ SUBROUTINE calc_chi_bare_matrix_GG(chi0, w, nw, qv)
   !
   do ik=first_idx, last_idx
     !
+    !write(*, *) "inode, ik", inode, ik
+    !write(*, *) "hk: "
     call calc_hk(hk, ham, kvec(:, ik))
+    !call show_matrix(hk, ham%norb, stdout)
     call eigen(ek, hk, ham%norb)
+    !write(*, *) "eig: "
+    !write(*, '(10F9.4)') ek
+    !write(*, *) "egv: "
+    !call show_matrix(hk, ham%norb, stdout)
     !
     kq=kvec(:, ik)+qv(:)
+    !write(*, *) "hkq:"
     call calc_hk(hkq, ham, kq)
+    !call show_matrix(hkq, ham%norb, stdout)
     call eigen(ekq, hkq, ham%norb)
+    !write(*, *) "eig: "
+    !write(*, '(10F9.4)') ekq
+    !write(*, *) "egv: "
+    !call show_matrix(hkq, ham%norb, stdout)
     !
     call calc_chi_bare_matrix_GG_kernel(w, nw)
     !
@@ -885,7 +1028,7 @@ END SUBROUTINE
 
 SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
   !
-  use constants,    only : dp, cmplx_0, stdout, twopi
+  use constants,    only : dp, cmplx_0, twopi
   use wanndata,     only : calc_hk
   use lattice,      only : nkirr, kvec, ham
   use para,         only : para_merge_cmplx, first_idx, last_idx
@@ -904,9 +1047,16 @@ SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
   real(dp),    dimension(3)  :: DG
   real(dp)                   :: GdotTau
   complex(dp)                :: extra_phase
-  complex(dp)                :: fact
   !
-  chi0=cmplx_0
+  chiff=cmplx_0
+  !
+  if (nCCidx>0) then
+    !
+    chicc=cmplx_0
+    chifc=cmplx_0
+    chicf=cmplx_0
+    !
+  endif
   !
   do ik=first_idx, last_idx
     !
@@ -930,6 +1080,7 @@ SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
     !
     do ii=1, ham%norb
       !
+      !write(*, '(A,2I5,3F9.4)') "inode, ii, tau:", inode, ii, ham%tau(:, ii)
       GdotTau=SUM(DG(:)*ham%tau(:, ii))*twopi
       extra_phase=CMPLX(cos(GdotTau), sin(GdotTau), KIND=dp)
       hkq(ii, :)=conjg(extra_phase)*hkq(ii, :)

@@ -162,4 +162,15 @@ MODULE IntRPA
     !
   END SUBROUTINE
   !
+  SUBROUTINE finalize_RPA
+    !
+    implicit none
+    !
+    if (allocated(FFidx))   deallocate(FFidx)
+    if (allocated(CCidx))   deallocate(CCidx)
+    if (allocated(Uint_cp)) deallocate(Uint_cp)
+    if (allocated(idxUcp))  deallocate(idxUcp)
+    !
+  END SUBROUTINE
+  !
 END MODULE
