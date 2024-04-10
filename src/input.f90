@@ -177,9 +177,13 @@ CONTAINS
   !
   if (spectra_calc) then
     !
-    do ii=1, nnu
-      nu(ii)=emin+(emax-emin)*(ii-1)/(nnu-1)
-    enddo
+    if (nnu>1) then
+      do ii=1, nnu
+        nu(ii)=emin+(emax-emin)*(ii-1)/(nnu-1)
+      enddo
+    else
+      nu(1)=emin
+    endif
     !
   else
     !
