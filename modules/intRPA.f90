@@ -82,8 +82,8 @@ MODULE IntRPA
         !
         do j1=1, blkdim(ii)
           do j2=1, blkdim(ii)
-            FFidx(1, jj)=j1
-            FFidx(2, jj)=j2
+            FFidx(1, jj)=blkidx(j1)
+            FFidx(2, jj)=blkidx(j2)
             jj=jj+1
           enddo
         enddo
