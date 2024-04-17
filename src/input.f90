@@ -193,7 +193,7 @@ CONTAINS
   else
     !
     do ii=1, nnu
-      nu(ii)=twopi*(ii-1)/beta
+      nu(ii)=twopi*(ii-1)*cmplx_i/beta
     enddo
     !
   endif
