@@ -39,7 +39,7 @@ MODULE IntRPA
     integer nffblk
     integer, dimension(:), allocatable :: blkdim
     integer, dimension(:), allocatable :: blkidx
-    integer, dimension(:), allocatable :: partition
+    integer, dimension(ham%norb) :: mapping
     integer ii, jj, j1, j2, i1, i2
     !
     ! Figure out dimensions...
@@ -61,12 +61,20 @@ MODULE IntRPA
       !
     endif
     !
+    mapping=0
+    !
     call para_sync_int0(nFFidx)
     call para_sync_int0(nCCidx)
     !
-    allocate(FFidx(2, nFFidx), CCidx(nCCidx))
-    allocate(partition(ham%norb))
-    partition(:)=0
+    if (nCCidx<0) then
+      !
+      write(*, *) " !!! Incorrect RPA division!"
+      stop
+      !
+    endif
+    !
+    allocate(FFidx(2, nFFidx))
+    if (nCCidx>0) allocate(CCidx(nCCidx))
     !
     ! Construct FFblock / CCblock
     !
@@ -78,7 +86,7 @@ MODULE IntRPA
         allocate(blkidx(blkdim(ii)))
         !
         read(fin, *) blkidx(:)
-        partition(blkidx(:))=ii
+        mapping(blkidx(:))=ii
         !
         do j1=1, blkdim(ii)
           do j2=1, blkdim(ii)
@@ -95,7 +103,7 @@ MODULE IntRPA
       jj=1
       do ii=1, ham%norb
         !
-        if (partition(ii).eq.0) then
+        if (mapping(ii).eq.0) then
           CCidx(jj)=ii
           jj=jj+1
         endif
@@ -107,7 +115,7 @@ MODULE IntRPA
     endif
     !
     call para_sync_int(FFidx, nFFidx*2)
-    call para_sync_int(CCidx, nCCidx)
+    if (nCCidx>0) call para_sync_int(CCidx, nCCidx)
     call para_sync_int0(nUcp)
     !
     if (nUcp.ne.0) then
@@ -159,6 +167,63 @@ MODULE IntRPA
       endif
       !
     enddo
+    !
+  END SUBROUTINE
+  !
+  SUBROUTINE calc_chiRPA(chiff, chicc, chifc, chicf, chi0ff, chi0cc, chi0fc, chi0cf, ff_only, nw)
+    !
+    use constants,      only : dp, cmplx_0, cmplx_1
+    use linalgwrap,     only : sparsemulmat, matmulsparse, invmat
+    !
+    implicit none
+    !
+    logical ff_only
+    integer nw
+    !
+    complex(dp), dimension(nFFidx, nFFidx, nw) :: chiff, chi0ff
+    complex(dp), dimension(nCCidx, nCCidx, nw) :: chicc, chi0cc
+    complex(dp), dimension(nFFidx, nCCidx, nw) :: chifc, chi0fc
+    complex(dp), dimension(nCCidx, nFFidx, nw) :: chicf, chi0cf
+    !
+    complex(dp), dimension(nFFidx, nFFidx) :: Dff, Vff
+    complex(dp), dimension(nCCidx, nFFidx) :: tmpcf
+    !
+    integer ii, iw
+    !
+    do iw=1, nw
+      !
+      Dff=cmplx_0
+      !
+      do ii=1, nFFidx
+        Dff(ii, ii)=cmplx_1
+      enddo
+      !
+      ! D_{FF}=(1-\chi^0_{FF}*U_{FF})^{-1}
+      ! Vff=Uff*Dff
+      !
+      call matmulsparse(Dff, chi0ff(:, :, iw),  Uint_cp, idxUcp, nFFidx, nUcp, -1.d0, 1.d0)
+      call invmat(Dff, nFFidx)
+      call sparsemulmat(Vff, Uint_cp,           Dff,     idxUcp, nFFidx, nUcp,  1.d0, 0.d0)
+      !
+      ! chiff=Dff*chi0ff
+      !
+      call zgemm('N', 'N', nFFidx, nFFidx, nFFidx, cmplx_1, Dff, nFFidx, chi0ff(:, :, iw), nFFidx, cmplx_0, chiff(:, :, iw), nFFidx)
+      !
+      if ((.not. ff_only).and.(nCCidx>0)) then
+        !
+        ! tmpcf=chi0cf*Vff
+        ! chifc=Dff*chi0fc
+        ! chicf=chi0cf+tmpcf*chi0ff
+        ! chicc=chi0cc+tmpcf*chi0fc
+        !
+        call zgemm('N', 'N', nCCidx, nFFidx, nFFidx, cmplx_1, chi0cf(:, :, iw), nCCidx, Vff,              nFFidx, cmplx_0, tmpcf,           nCCidx)
+        call zgemm('N', 'N', nFFidx, nCCidx, nFFidx, cmplx_1, Dff,              nFFidx, chi0fc(:, :, iw), nFFidx, cmplx_0, chifc(:, :, iw), nFFidx)
+        call zgemm('N', 'N', nCCidx, nFFidx, nFFidx, cmplx_1, tmpcf,            nCCidx, chi0ff(:, :, iw), nFFidx, cmplx_1, chicf(:, :, iw), nCCidx)
+        call zgemm('N', 'N', nCCidx, nCCidx, nFFidx, cmplx_1, tmpcf,            nCCidx, chi0fc(:, :, iw), nFFidx, cmplx_1, chicc(:, :, iw), nCCidx)
+        !
+      endif
+      !
+    enddo ! iw
     !
   END SUBROUTINE
   !

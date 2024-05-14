@@ -20,6 +20,10 @@ PROGRAM wannchi
   CALL read_ham(ham, seed)
   CALL wannham_shift_ef(ham, mu)
   !
+  if (inode.eq.0) then
+    write(stdout, '(A,1F14.9,A)') "   # Fermi level shifted to ", mu, " eV"
+  endif
+  !
   CALL read_posfile(trim(seed)//".pos")
   !
   CALL read_kmesh("IBZKPT")
@@ -28,10 +32,6 @@ PROGRAM wannchi
   !
   if (.not.trace_only) CALL read_RPA
   !
-  if (inode.eq.0) then
-    write(stdout, '(A,1F14.9,A)') "   # Fermi level shifted to ", mu, " eV"
-  endif
-  !
   if (use_lehman) then
     !
     call prepare_lehman
@@ -39,7 +39,6 @@ PROGRAM wannchi
   else
     !
     call prepare_GG
-    !
     call print_pade
     !
   endif
@@ -109,11 +108,11 @@ PROGRAM wannchi
         !
         if (ff_only) then
           !
-          call save_chi_matrix(iq, nnu, .true.)
+          call save_chi_matrix((iq-1)*nnu, nnu, .true.)
           !
         else
           !
-          call save_chi_matrix(iq, nnu, .false.)
+          call save_chi_matrix((iq-1)*nnu, nnu, .false.)
           !
         endif
         !

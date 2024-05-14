@@ -101,6 +101,30 @@ SUBROUTINE para_barrier()
   !
 END SUBROUTINE
 
+SUBROUTINE para_sync_logical(dat)
+  !
+  implicit none
+  !
+  logical :: dat
+  !
+#if defined __MPI
+  !
+  integer ierr, ii
+  !
+  if (dat) then
+    ii=1
+  else
+    ii=0
+  endif
+  !
+  CALL mpi_bcast(ii, 1, MPI_INTEGER, 0, mpi_comm_world, ierr)
+  !
+  dat=(ii.eq.1)
+  !
+#endif
+  !
+END SUBROUTINE
+
 SUBROUTINE para_sync_int0(dat)
   !
   implicit none

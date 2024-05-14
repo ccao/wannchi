@@ -127,6 +127,8 @@ SUBROUTINE read_ham_dim(ham, seed)
   ham%nrpt=tt(2)
   allocate(ham%tau(3, ham%norb))
   !
+  ham%tau(:,:)=0.d0
+  !
   if (inode.eq.0) then
     write(stdout, *) " #  Dimensions:"
     write(stdout, *) "    # of orbitals:", ham%norb
@@ -253,8 +255,8 @@ SUBROUTINE finalize_wann(ham, all)
   logical, intent(in)          :: all
   !
   if (allocated(ham%hr)) deallocate(ham%hr)
-  if (allocated(ham%weight)) deallocate(ham%weight)
-  if (allocated(ham%rvec)) deallocate(ham%rvec)
+  if (all.and.allocated(ham%weight)) deallocate(ham%weight)
+  if (all.and.allocated(ham%rvec)) deallocate(ham%rvec)
   if (all.and.allocated(ham%tau)) deallocate(ham%tau)
   !
 END SUBROUTINE
@@ -268,6 +270,7 @@ SUBROUTINE calc_hk(hk, ham, kvec)
   TYPE(wannham), intent(in)          :: ham
   real(dp), dimension(3), intent(in) :: kvec
   complex(dp), dimension(ham%norb, ham%norb), intent(out) :: hk
+  !logical, optional :: tauphase_correct
   !
   integer ir
   real(dp)    :: rdotk
@@ -278,12 +281,22 @@ SUBROUTINE calc_hk(hk, ham, kvec)
   complex(dp) :: orbfac
   complex(dp), dimension(ham%norb)  :: phase
   !
+  !logical additional_phase
+  !
   hk(:,:)=cmplx_0
   !
+  !if (.not. PRESENT(tauphase_correct)) then
+  !  additional_phase=.true.
+  !else
+  !  additional_phase=tauphase_correct
+  !endif
+  !
+  !if (additional_phase) then
   do io=1, ham%norb
-    ktau=-sum(kvec(:)*ham%tau(:, io))*twopi
+    ktau=sum(kvec(:)*ham%tau(:, io))*twopi
     phase(io)=cmplx(cos(ktau), sin(ktau), KIND=dp)
   enddo
+  !endif
   !
   do ir=1, ham%nrpt
     rdotk=sum(kvec(:)*ham%rvec(:, ir))*twopi
@@ -292,7 +305,11 @@ SUBROUTINE calc_hk(hk, ham, kvec)
     do io=1, ham%norb
       do jo=1, ham%norb
         !
-        hk(io, jo)=hk(io, jo)+fact*conjg(phase(jo))*phase(io)*ham%hr(io, jo, ir)
+        !if (additional_phase) then
+        hk(io, jo)=hk(io, jo)+fact*conjg(phase(io))*phase(jo)*ham%hr(io, jo, ir)
+        !else
+        !  hk(io, jo)=hk(io, jo)+fact*ham%hr(io, jo, ir)
+        !endif
         !
       enddo
     enddo

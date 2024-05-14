@@ -32,11 +32,16 @@ MODULE constants
   ! Primary output
   integer, parameter :: fout2=12
   ! Secondary output
-  integer, parameter :: fout3=13
-  integer, parameter :: fout4=14
-  integer, parameter :: fout5=15
-  integer, parameter :: fout6=16
-  integer, parameter :: fdebug=20
+  integer, parameter :: fin3=13
+  integer, parameter :: fin4=14
+  integer, parameter :: fin5=15
+  integer, parameter :: fin6=16
+  !
+  integer, parameter :: fout3=17
+  integer, parameter :: fout4=18
+  integer, parameter :: fout5=19
+  integer, parameter :: fout6=20
+  integer, parameter :: fdebug=30
   ! Internal units...
   !
   ! Limits

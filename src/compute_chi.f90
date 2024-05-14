@@ -29,24 +29,36 @@ MODULE chi_internal
   !
   ! THESE VARIABLES ARE USED IF G*G ALGORITHM IS EMPLOYED (for correlated case)
   !
-  complex(dp), dimension(:, :, :), allocatable :: Hff_k, Hff_kq
-  complex(dp), dimension(:, :, :), allocatable :: Vfc_k, Vfc_kq
-  real(dp), dimension(:, :), allocatable       :: Ecc_k, Ecc_kq
+  complex(dp), dimension(:, :), allocatable :: Hff_k, Hff_kq
+  complex(dp), dimension(:, :), allocatable :: Vfc_k, Vfc_kq
+  real(dp), dimension(:), allocatable       :: Ecc_k, Ecc_kq
   !
   ! THESE VARIABLES ARE USED IF G*G FAST ALGORITHM IS EMPLOYED (for correlated case)
   !
-  complex(dp), dimension(:, :, :), allocatable :: Hff_full,  Vfc_full
-  real(dp), dimension(:, :), allocatable       :: Ecc_full
+  complex(dp), dimension(:, :, :), allocatable :: Hff_full, Vfc_full, Hkff_loc, Hkqff_loc, Vkfc_loc, Vkqfc_loc
+  real(dp), dimension(:, :), allocatable       :: Ecc_full, Ecck_loc, Ecckq_loc
+  !
+  ! THESE VARIABLES ARE USED IN CORRELATED CASE
+  !
+  complex(dp), dimension(:, :, :), allocatable :: Gff_k, Gff_kq
+  !
+  ! THESE VARIABLES ARE USED FOR SUPERFAST ALGORITHM IN CORRELATED CASE
+  !
+  complex(dp), dimension(:, :, :, :), allocatable :: Gff_full, Gkff_loc, Gkqff_loc
+  !
   !
   ! THESE VARIABLES ARE USED FOR FULL MATRIX CALCULATIONS
   !
   complex(dp), dimension(:, :, :), allocatable :: chiff, chicc, chifc, chicf
   !
+  ! THESE VARIABLES ARE USED FOR RPA CALCULATIONS
+  complex(dp), dimension(:, :, :), allocatable :: chi0ff, chi0cc, chi0fc, chi0cf
+  !
   contains
   !
   subroutine finalize_chi_internal()
     !
-    use constants,    only : fout3, fout4, fout5, fout6
+    use constants,    only : fout3, fout4, fout5, fout6, fin3, fin4, fin5, fin6
     !
     implicit none
     !
@@ -56,6 +68,10 @@ MODULE chi_internal
     if (allocated(chicc))         deallocate(chicc)
     if (allocated(chifc))         deallocate(chifc)
     if (allocated(chicf))         deallocate(chicf)
+    if (allocated(chi0ff))        deallocate(chi0ff)
+    if (allocated(chi0cc))        deallocate(chi0cc)
+    if (allocated(chi0fc))        deallocate(chi0fc)
+    if (allocated(chi0cf))        deallocate(chi0cf)
     !
     if (allocated(ek))            deallocate(ek)
     if (allocated(ekq))           deallocate(ekq)
@@ -79,6 +95,18 @@ MODULE chi_internal
     if (allocated(Vfc_k))         deallocate(Vfc_k)
     if (allocated(Vfc_kq))        deallocate(Vfc_kq)
     if (allocated(Ecc_full))      deallocate(Ecc_fulL)
+    !
+    inquire(unit=fin3, opened=isopen)
+    if (isopen) close(unit=fin3)
+    !
+    inquire(unit=fin4, opened=isopen)
+    if (isopen) close(unit=fin4)
+    !
+    inquire(unit=fin5, opened=isopen)
+    if (isopen) close(unit=fin5)
+    !
+    inquire(unit=fin6, opened=isopen)
+    if (isopen) close(unit=fin6)
     !
     inquire(unit=fout3, opened=isopen)
     if (isopen) close(unit=fout3)
@@ -128,44 +156,89 @@ MODULE chi_internal
     !
   end subroutine
 
-  subroutine init_chi_internal_lehman(fast_calc)
+  subroutine init_chi_matrix_RPA(nw)
     !
-    use constants, only : dp
+    use constants, only : dp, fin3, fin4, fin5, fin6, fout3, fout4, fout5, fout6
     use lattice,   only : ham, nkirr
     use para,      only : first_idx, last_idx, inode
+    use IntRPA,    only : nFFidx, nCCidx
     !
     implicit none
     !
-    logical fast_calc
+    integer nw
     !
-    ! These are always required in any cases...
+    allocate(chiff(nFFidx, nFFidx, nw))
+    allocate(chi0ff(nFFidx, nFFidx, nw))
     !
-    allocate(ek(ham%norb), ekq(ham%norb), occ_k(ham%norb), occ_kq(ham%norb))
-    allocate(hk(ham%norb, ham%norb), hkq(ham%norb, ham%norb), Skq(ham%norb, ham%norb))
+    if (nCCidx>0) then
+      !
+      allocate(chifc(nFFidx, nCCidx, nw))
+      allocate(chicf(nCCidx, nFFidx, nw))
+      allocate(chicc(nCCidx, nCCidx, nw))
+      allocate(chi0fc(nFFidx, nCCidx, nw))
+      allocate(chi0cf(nCCidx, nFFidx, nw))
+      allocate(chi0cc(nCCidx, nCCidx, nw))
+      !
+    endif
     !
-    if (fast_calc) then
+    if (inode.eq.0) then
       !
-      allocate(kq_idx(nkirr))
-      !
-      allocate(eig_full(ham%norb, nkirr), occ_full(ham%norb, nkirr))
-      !
-      if (inode.eq.0) then
-        !
-        allocate(Uk_full(ham%norb, ham%norb, nkirr))
-        !
-      else
-        !
-        allocate(Uk_full(1, 1, 1))
-        !
+      open(unit=fout3, file='chiff.dat', form='unformatted', access='direct', recl=nFFidx*nFFidx*16)
+      open(unit=fin3, file='chi0ff.dat', form='unformatted', access='direct', recl=nFFidx*nFFidx*16)
+      if (nCCidx>0) then
+        open(unit=fout4, file='chicc.dat', form='unformatted', access='direct', recl=nCCidx*nCCidx*16)
+        open(unit=fout5, file='chifc.dat', form='unformatted', access='direct', recl=nFFidx*nCCidx*16)
+        open(unit=fout6, file='chicf.dat', form='unformatted', access='direct', recl=nCCidx*nFFidx*16)
+        open(unit=fin4, file='chi0cc.dat', form='unformatted', access='direct', recl=nCCidx*nCCidx*16)
+        open(unit=fin5, file='chi0fc.dat', form='unformatted', access='direct', recl=nFFidx*nCCidx*16)
+        open(unit=fin6, file='chi0cf.dat', form='unformatted', access='direct', recl=nCCidx*nFFidx*16)
       endif
-      !
-      allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
       !
     endif
     !
   end subroutine
 
-  subroutine init_chi_internal_GG(fast_calc)
+  subroutine init_chi_internal_lehman(fast_calc, step)
+    !
+    use constants, only : dp
+    use lattice,   only : ham, nkirr
+    use para,      only : first_idx, last_idx, inode
+    !
+    implicit none
+    !
+    integer step
+    logical fast_calc
+    !
+    ! These are always required in any cases...
+    !
+    if (step.ne.2) then
+      allocate(ek(ham%norb), ekq(ham%norb), occ_k(ham%norb), occ_kq(ham%norb))
+      allocate(hk(ham%norb, ham%norb), hkq(ham%norb, ham%norb), Skq(ham%norb, ham%norb))
+    endif
+    !
+    if (fast_calc) then
+      !
+      if (step==1) then
+        !
+        allocate(eig_full(ham%norb, nkirr), occ_full(ham%norb, nkirr))
+        allocate(kq_idx(nkirr))
+        allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
+        !
+      else
+        !
+        if (inode.eq.0) then
+          allocate(Uk_full(ham%norb, ham%norb, nkirr))
+        else
+          allocate(Uk_full(1, 1, 1))
+        endif
+        !
+      endif
+      !
+    endif
+    !
+  end subroutine
+
+  subroutine init_chi_internal_GG(fast_calc, step)
     !
     use constants, only : dp
     use lattice,   only : ham, nkirr
@@ -174,29 +247,143 @@ MODULE chi_internal
     implicit none
     !
     logical fast_calc
+    integer step
     !
     ! These are always required in any cases...
     !
-    allocate(ek(ham%norb), ekq(ham%norb))
-    allocate(hk(ham%norb, ham%norb), hkq(ham%norb, ham%norb))
+    if (step.ne.2) then
+      allocate(ek(ham%norb), ekq(ham%norb))
+      allocate(hk(ham%norb, ham%norb), hkq(ham%norb, ham%norb))
+    endif
     !
     if (fast_calc) then
       !
-      allocate(kq_idx(nkirr))
-      !
-      allocate(eig_full(ham%norb, nkirr))
-      !
-      if (inode.eq.0) then
+      if (step==1) then
         !
-        allocate(Uk_full(ham%norb, ham%norb, nkirr))
+        allocate(kq_idx(nkirr))
+        allocate(eig_full(ham%norb, nkirr))
+        allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
         !
       else
         !
-        allocate(Uk_full(1, 1, 1))
+        if (inode.eq.0) then
+          allocate(Uk_full(ham%norb, ham%norb, nkirr))
+        else
+          allocate(Uk_full(1, 1, 1))
+        endif
         !
       endif
       !
-      allocate(Uk_local(ham%norb, ham%norb, last_idx-first_idx+1), Ukq_local(ham%norb, ham%norb, last_idx-first_idx+1))
+    endif
+    !
+  end subroutine
+
+  subroutine init_chi_internal_corr(fast_calc, step)
+    !
+    use constants,    only : dp
+    use lattice,      only : ham, ndimf, ndimc, nkirr
+    use para,         only : first_idx, last_idx, inode
+    use input,        only : nnu, npade
+    use IntRPA,       only : nFFidx, nCCidx
+    !
+    implicit none
+    !
+    logical fast_calc
+    integer step
+    !
+    ! Always needed
+    !
+    if (step.ne.2) then
+      !
+      allocate(Gff_k(ndimf, ndimf, 2*npade), Gff_kq(ndimf, ndimf, 2*npade))
+      !
+    endif
+    !
+    if (.not. fast_calc) then
+      !
+      if (step==1) then
+        !
+        allocate(kq_idx(nkirr))
+        !
+        allocate(Hff_k(ndimf, ndimf), Vfc_k(ndimf, ndimc), Ecc_k(ndimc))
+        allocate(Hff_kq(ndimf, ndimf), Vfc_kq(ndimf, ndimc), Ecc_kq(ndimc))
+        !
+        allocate(Ecc_full(ndimc,        nkirr))
+        allocate(Hkff_loc(ndimf, ndimf, last_idx-first_idx+1))
+        allocate(Vkfc_loc(ndimf, ndimc, last_idx-first_idx+1))
+        allocate(Ecck_loc(ndimc,        last_idx-first_idx+1))
+        !
+        allocate(Hkqff_loc(ndimf, ndimf, last_idx-first_idx+1))
+        allocate(Vkqfc_loc(ndimf, ndimc, last_idx-first_idx+1))
+        allocate(Ecckq_loc(ndimc,        last_idx-first_idx+1))
+        !
+      else
+        !
+        if (inode.eq.0) then
+          !
+          allocate(Hff_full(ndimf, ndimf, nkirr))
+          allocate(Vfc_full(ndimf, ndimc, nkirr))
+          !
+        else
+          !
+          allocate(Hff_full(1, 1, 1))
+          allocate(Vfc_full(1, 1, 1))
+          !
+        endif
+        !
+      endif
+      !
+    else
+      !
+      if (step==1) then
+        !
+        allocate(kq_idx(nkirr))
+        !
+        allocate(Hkff_loc(ndimf, ndimf, last_idx-first_idx+1))
+        allocate(Vkfc_loc(ndimf, ndimc, last_idx-first_idx+1))
+        allocate(Ecck_loc(ndimc,        last_idx-first_idx+1))
+        !
+      else
+        !
+        allocate(Gkff_loc(ndimf, ndimf, 2*npade, last_idx-first_idx+1))
+        allocate(Gkqff_loc(ndimf, ndimf, 2*npade, last_idx-first_idx+1))
+        !
+        if (inode.eq.0) then
+          !
+          allocate(Gff_full(ndimf, ndimf, 2*npade, nkirr))
+          !
+        else
+          !
+          allocate(Gff_full(1, 1, 1, 1))
+          !
+        endif
+        !
+      endif
+      !
+    endif
+    !
+  end subroutine
+
+  subroutine save_chi_matrix_one(idx, ii, ff_only)
+    !
+    use constants, only : fout3, fout4, fout5, fout6
+    use para,      only : inode
+    use IntRPA,    only : nCCidx, nFFidx
+    !
+    implicit none
+    !
+    integer idx
+    logical ff_only
+    integer ii
+    !
+    if (inode.eq.0) then
+      write(fout3, rec=idx+ii) chiff(:, :, ii)
+      !
+      if ((.not. ff_only).and.(nCCidx.ne.0)) then
+        write(fout4, rec=idx+ii) chicc(:, :, ii)
+        write(fout5, rec=idx+ii) chifc(:, :, ii)
+        write(fout6, rec=idx+ii) chicf(:, :, ii)
+      endif
       !
     endif
     !
@@ -216,12 +403,12 @@ MODULE chi_internal
     !
     if (inode.eq.0) then
       do ii=1, nn
-        write(fout3, rec=idx+ii-1) chiff(:, :, ii)
+        write(fout3, rec=idx+ii) chiff(:, :, ii)
         !
         if ((.not. ff_only).and.(nCCidx.ne.0)) then
-          write(fout4, rec=idx+ii-1) chicc(:, :, ii)
-          write(fout5, rec=idx+ii-1) chifc(:, :, ii)
-          write(fout6, rec=idx+ii-1) chicf(:, :, ii)
+          write(fout4, rec=idx+ii) chicc(:, :, ii)
+          write(fout5, rec=idx+ii) chifc(:, :, ii)
+          write(fout6, rec=idx+ii) chicf(:, :, ii)
         endif
         !
       enddo
@@ -243,12 +430,39 @@ MODULE chi_internal
     !
     if (inode.eq.0) then
       do ii=1, nn
-        read(fout3, rec=idx+ii-1) chiff(:, :, ii)
+        read(fout3, rec=idx+ii) chiff(:, :, ii)
         !
         if ((.not. ff_only).and.(nCCidx.ne.0)) then
-          read(fout4, rec=idx+ii-1) chicc(:, :, ii)
-          read(fout5, rec=idx+ii-1) chifc(:, :, ii)
-          read(fout6, rec=idx+ii-1) chicf(:, :, ii)
+          read(fout4, rec=idx+ii) chicc(:, :, ii)
+          read(fout5, rec=idx+ii) chifc(:, :, ii)
+          read(fout6, rec=idx+ii) chicf(:, :, ii)
+        endif
+        !
+      enddo
+    endif
+    !
+  end subroutine
+
+  subroutine read_chi_matrix_RPA(idx, nn, ff_only)
+    !
+    use constants, only : fin3, fin4, fin5, fin6
+    use para,      only : inode
+    use IntRPA,    only : nCCidx, nFFidx
+    !
+    implicit none
+    !
+    integer idx, nn
+    logical ff_only
+    integer ii
+    !
+    if (inode.eq.0) then
+      do ii=1, nn
+        read(fin3, rec=idx+ii) chi0ff(:, :, ii)
+        !
+        if ((.not. ff_only).and.(nCCidx.ne.0)) then
+          read(fin4, rec=idx+ii) chi0cc(:, :, ii)
+          read(fin5, rec=idx+ii) chi0fc(:, :, ii)
+          read(fin6, rec=idx+ii) chi0cf(:, :, ii)
         endif
         !
       enddo
@@ -259,6 +473,7 @@ MODULE chi_internal
   subroutine show_chi_diag(iou, iw)
     !
     use IntRPA,    only : nFFidx, nCCidx
+    use input,     only : ff_only
     !
     implicit none
     !
@@ -274,27 +489,32 @@ MODULE chi_internal
     !
     write(iou, *) "  Diagonal elements in FF:"
     write(iou, *) "    Real Part:"
+    !
     do ii=1, nFFidx
       write(iou, '(1F14.9)', advance='no') real(chiff(ii, ii, iw))
+      if (MOD(ii,10)==0.or.ii==nFFidx) write(iou, *) 
     enddo
     write(iou, *)
     write(iou, *) "    Imag Part:"
     do ii=1, nFFidx
       write(iou, '(1F14.9)', advance='no') aimag(chiff(ii, ii, iw))
+      if (MOD(ii,10)==0.or.ii==nFFidx) write(iou, *) 
     enddo
     write(iou, *)
     !
-    if (nCCidx>0) then
+    if (nCCidx>0.and.(.not.ff_only)) then
       !
       write(iou, *) "  Diagonal elements in CC:"
       write(iou, *) "    Real Part:"
       do ii=1, nCCidx
         write(iou, '(1F14.9)', advance='no') real(chicc(ii, ii, iw))
+        if (MOD(ii,10)==0.or.ii==nCCidx) write(iou, *) 
       enddo
       write(iou, *)
       write(iou, *) "    Imag Part:"
       do ii=1, nCCidx
         write(iou, '(1F14.9)', advance='no') aimag(chicc(ii, ii, iw))
+        if (MOD(ii,10)==0.or.ii==nCCidx) write(iou, *) 
       enddo
       write(iou, *)
       !
@@ -306,17 +526,19 @@ END MODULE
 
 SUBROUTINE prepare_lehman
   !
-  use constants,  only : dp
+  use constants,  only : dp, stdout
   use input,      only : beta, nnu, fast_calc, trace_only
   use lattice,    only : nkirr, ham, kvec
   use wanndata,   only : calc_hk, finalize_wann
-  use para,       only : distribute_calc, first_idx, last_idx, para_collect_cmplx, para_merge_real, inode
+  use para,       only : distribute_calc, first_idx, last_idx, para_collect_cmplx, para_merge_real, inode, nnode
   use linalgwrap, only : eigen
   use chi_internal, only : hk, eig_full, occ_full, Uk_full, Uk_local, init_chi_internal_lehman, init_chi_matrix
+  use IntRPA,     only : nFFidx, nCCidx
   !
   implicit none
   !
   integer ik, ii
+  real(dp)      :: mem_req
   !
   real(dp) calc_occ
   !
@@ -326,6 +548,39 @@ SUBROUTINE prepare_lehman
     !
   endif
   !
+  if (inode.eq.0) then
+    !
+    mem_req = (ham%norb * ham%norb * ham%nrpt * nnode * 16.d0)
+    !
+    write(stdout, '(A)') ' Lehman representation calculation '
+    write(stdout, '(A)') '   This is faster than G*G algorithm, '
+    write(stdout, '(A)') '   but may NOT be accurate for highly degenerate systems. '
+    write(stdout, '(A)') 
+    write(stdout, '(A,1F9.1,A)') ' Wannier Hamiltonian takes ~ ', mem_req/1.d9, 'GB'
+    !
+    if (fast_calc) then
+      !
+      if (nkirr > ham%nrpt * nnode) then
+        mem_req = (ham%norb * ham%norb * nkirr * 2.d0) *16.d0
+      else
+        mem_req = mem_req + (ham%norb * ham%norb * nkirr) *16.d0
+      endif
+      !
+      write(stdout, *) '  !!!!!!!!!!!!!!!!!!! ATTENTION !!!!!!!!!!!!!!!!!!!'
+      write(stdout, *) '  FAST ALGORITHM, MAKE SURE YOU HAVE ENOUGH MEMORY'
+      write(stdout, *) '    AND qv IS COMMENSURATE!!!'
+      !
+      if (.not. trace_only) then
+        mem_req = mem_req + (nFFidx + nCCidx) * (nFFidx + nCCidx) * nnu * nnode * 16.d0
+      endif
+      !
+      write(stdout, '(A,1F9.1,A)') '    Estimated required memory size:', mem_req/1.d9, 'GB'
+      write(stdout, *) '  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+      !
+    endif
+    !
+  endif
+  !
   if (fast_calc) then
     ! Do Full Kmesh diagonalization beforehand
     !    in case of fast calculation
@@ -333,7 +588,7 @@ SUBROUTINE prepare_lehman
     call distribute_calc(nkirr)
     ! Always parallel in Kmesh in fast calculations
     !
-    call init_chi_internal_lehman(fast_calc)
+    call init_chi_internal_lehman(fast_calc, 1)
     !
     eig_full=0.0
     occ_full=0.0
@@ -341,20 +596,18 @@ SUBROUTINE prepare_lehman
     do ik=first_idx, last_idx
       !
       call calc_hk(hk, ham, kvec(:, ik))
-      !
       call eigen(eig_full(:, ik), hk, ham%norb)
       !
       Uk_local(:, :, ik-first_idx+1)=hk(:, :)
       !
       do ii=1, ham%norb
-        !
         occ_full(ii, ik)=calc_occ(eig_full(ii, ik), beta)
-        !
       enddo
       !
     enddo
     !
     call finalize_wann(ham, .false.)
+    call init_chi_internal_lehman(fast_calc, 2)
     !
     call para_merge_real(eig_full, ham%norb*nkirr)
     call para_merge_real(occ_full, ham%norb*nkirr)
@@ -362,7 +615,7 @@ SUBROUTINE prepare_lehman
     !
   else
     !
-    call init_chi_internal_lehman(fast_calc)
+    call init_chi_internal_lehman(fast_calc, 1)
     !
   endif
   !
@@ -370,22 +623,51 @@ END SUBROUTINE
 
 SUBROUTINE prepare_GG
   !
-  use constants,  only : dp
+  use constants,  only : dp, stdout
   use input,      only : beta, nnu, fast_calc, trace_only, npade
   use lattice,    only : nkirr, ham, kvec
   use wanndata,   only : calc_hk, finalize_wann
-  use para,       only : distribute_calc, first_idx, last_idx, para_collect_cmplx, para_merge_real, inode
+  use para,       only : distribute_calc, first_idx, last_idx, para_collect_cmplx, para_merge_real, inode, nnode
   use linalgwrap, only : eigen
   use chi_internal, only : hk, eig_full, Uk_full, Uk_local, init_chi_internal_GG, init_chi_matrix
   use pade_sum,   only : init_pade
+  use IntRPA,     only : nCCidx, nFFidx
   !
   implicit none
   !
   integer ik, ii
+  real(dp) mem_req
   !
   call init_chi_matrix(nnu)
   !
   call init_pade(npade, .true.)
+  !
+  if (inode.eq.0) then
+    !
+    mem_req = (ham%norb * ham%norb * ham%nrpt * nnode * 16.d0)
+    !
+    write(stdout, '(A,1F9.1,A)') ' Wannier Hamiltonian takes ~ ', mem_req/1.d9, 'GB'
+    !
+    if (fast_calc) then
+      !
+      if (nkirr > ham%nrpt * nnode) then
+        mem_req = (ham%norb * ham%norb * nkirr * 2.d0) *16.d0
+      else
+        mem_req = mem_req + (ham%norb * ham%norb * nkirr) *16.d0
+      endif
+      !
+      write(stdout, *) '  !!!!!!!!!!!!!!!!!!! ATTENTION !!!!!!!!!!!!!!!!!!!'
+      write(stdout, *) '  FAST ALGORITHM, MAKE SURE YOU HAVE ENOUGH MEMORY'
+      write(stdout, *) '    AND qv IS COMMENSURATE!!!'
+      !
+      mem_req = mem_req + (nFFidx + nCCidx) * (nFFidx + nCCidx) * nnu * nnode * 16.d0
+      !
+      write(stdout, '(A,1F9.1,A)') '    Estimated required memory size:', mem_req/1.d9, 'GB'
+      write(stdout, *) '  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+      !
+    endif
+    !
+  endif
   !
   if (fast_calc) then
     ! Do Full Kmesh diagonalization beforehand
@@ -394,14 +676,13 @@ SUBROUTINE prepare_GG
     call distribute_calc(nkirr)
     ! Always parallel in Kmesh in fast calculations
     !
-    call init_chi_internal_GG(fast_calc)
+    call init_chi_internal_GG(fast_calc, 1)
     !
     eig_full=0.0
     !
     do ik=first_idx, last_idx
       !
       call calc_hk(hk, ham, kvec(:, ik))
-      !
       call eigen(eig_full(:, ik), hk, ham%norb)
       !
       Uk_local(:, :, ik-first_idx+1)=hk(:, :)
@@ -409,13 +690,14 @@ SUBROUTINE prepare_GG
     enddo
     !
     call finalize_wann(ham, .false.)
+    call init_chi_internal_GG(fast_calc, 2)
     !
     call para_merge_real(eig_full, ham%norb*nkirr)
     call para_collect_cmplx(Uk_full, Uk_local, ham%norb*ham%norb)
     !
   else
     !
-    call init_chi_internal_GG(fast_calc)
+    call init_chi_internal_GG(fast_calc, 1)
     !
   endif
   !
@@ -1207,6 +1489,63 @@ SUBROUTINE calc_chi_bare_matrix_GG_fast(chi0, w, nw, qv)
   !
 END SUBROUTINE
 
+SUBROUTINE calc_chi_trace_from_matrixFF_one(chi0)
+  !
+  use constants,    only : dp, cmplx_0, stdout
+  use chi_internal, only : chiff
+  use IntRPA,       only : nFFidx, FFidx
+  !
+  implicit none
+  !
+  complex(dp) :: chi0
+  !
+  integer ii, jj
+  !
+  chi0=cmplx_0
+  !
+  do ii=1, nFFidx
+    if (FFidx(1, ii).ne.FFidx(2, ii)) cycle
+    !
+    do jj=1, nFFidx
+      if (FFidx(1, jj).ne.FFidx(2, jj)) cycle
+      !
+      chi0=chi0+chiff(ii, jj, 1)
+      !
+    enddo
+    !
+  enddo
+  !
+END SUBROUTINE
+
+SUBROUTINE calc_chi_trace_from_matrixFF(chi0, nw)
+  !
+  use constants,    only : dp, cmplx_0, stdout
+  use chi_internal, only : chiff
+  use IntRPA,       only : nFFidx, FFidx
+  !
+  implicit none
+  !
+  integer nw
+  complex(dp), dimension(nw) :: chi0
+  !
+  integer ii, jj
+  !
+  chi0=cmplx_0
+  !
+  do ii=1, nFFidx
+    if (FFidx(1, ii).ne.FFidx(2, ii)) cycle
+    !
+    do jj=1, nFFidx
+      if (FFidx(1, jj).ne.FFidx(2, jj)) cycle
+      !
+      chi0(:)=chi0(:)+chiff(ii, jj, :)
+      !
+    enddo
+    !
+  enddo
+  !
+END SUBROUTINE
+
 SUBROUTINE calc_chi_trace_from_matrix(chi0, nw)
   !
   use constants,    only : dp, cmplx_0, stdout
@@ -1392,6 +1731,73 @@ SUBROUTINE reorder_and_distribute_Ukq()
   call para_distribute_cmplx(Ukq_full, Ukq_local, ham%norb*ham%norb)
   !
   deallocate(Ukq_full)
+  !
+END SUBROUTINE
+
+SUBROUTINE reorder_and_distribute_Gff()
+  !
+  use constants,   only : dp, cmplx_0
+  use lattice,     only : ham, nkirr, ndimf
+  use chi_internal, only : Gff_full, Gkqff_loc, kq_idx
+  use para,        only : first_idx, last_idx, para_distribute_cmplx, inode
+  use pade_sum,    only : npole
+  !
+  implicit none
+  !
+  complex(dp), dimension(:, :, :, :), allocatable :: Gkqff_full
+  integer ii
+  !
+  if (inode.eq.0) then
+    allocate(Gkqff_full(ndimf, ndimf, 2*npole, nkirr))
+    Gkqff_full(:, :, :, :)=Gff_full(:, :, :, kq_idx(:))
+  else
+    allocate(Gkqff_full(1, 1, 1, 1))
+  endif
+  !
+  call para_distribute_cmplx(Gkqff_full, Gkqff_loc, 2 * ndimf * ndimf * npole)
+  !
+  deallocate(Gkqff_full)
+  !
+END SUBROUTINE
+
+SUBROUTINE reorder_and_distribute_Hff_Vfc_Ecc()
+  !
+  use constants,   only : dp, cmplx_0
+  use lattice,     only : ham, nkirr, ndimf, ndimc
+  use chi_internal, only : kq_idx, Hff_full, Vfc_full, Ecc_full, Hkqff_loc, Vkqfc_loc, Ecckq_loc
+  use para,        only : first_idx, last_idx, para_distribute_cmplx, inode
+  !
+  implicit none
+  !
+  complex(dp), dimension(:, :, :), allocatable :: Mkq_full
+  integer ii
+  !
+  ! Reorder Hff
+  if (inode.eq.0) then
+    allocate(Mkq_full(ndimf, ndimf, nkirr))
+    Mkq_full(:, :, :)=Hff_full(:, :, kq_idx(:))
+  else
+    allocate(Mkq_full(1, 1, 1))
+  endif
+  !
+  call para_distribute_cmplx(Mkq_full, Hkqff_loc, ndimf*ndimf)
+  !
+  deallocate(Mkq_full)
+  !
+  ! Reorder Vfc
+  !
+  if (inode.eq.0) then
+    allocate(Mkq_full(ndimf, ndimc, nkirr))
+    Mkq_full(:, :, :)=Vfc_full(:, :, kq_idx(:))
+  else
+    allocate(Mkq_full(1, 1, 1))
+  endif
+  !
+  call para_distribute_cmplx(Mkq_full, Vkqfc_loc, ndimf*ndimc)
+  !
+  deallocate(Mkq_full)
+  !
+  Ecckq_loc(:, 1:last_idx-first_idx+1) = Ecc_full(:, kq_idx(first_idx:last_idx))
   !
 END SUBROUTINE
 

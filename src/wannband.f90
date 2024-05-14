@@ -1,89 +1,158 @@
-PROGRAM wannband
+PROGRAM WannBand
   !
-  use constants,only : cmplx_0, stdout, dp, fout, cmplx_i, twopi
-  use para,     only : init_para, inode, distribute_calc, finalize_para, first_idx, last_idx, para_merge_real
-  use wanndata, only : read_ham, norb, finalize_wann, ham_shift_ef
-  use input,    only : read_input, seed, qvec, nqpt, emesh, nen, level, eps, finalize_input, mu, beta
-  use impurity, only : init_impurity, finalize_impurity
+  use constants,    only : stdout, dp, fout
+  use lattice,      only : ham, read_posfile, read_kmesh, read_impfile, read_sigfile, setup_mapping, fix_sigma_static, finalize_lattice_ham, finalize_lattice_kmesh, finalize_lattice_structure, print_impurity, interpolate_sigma_real, restore_lattice, nbath
+  use wanndata,     only : read_ham, wannham_shift_ef, finalize_wann, calc_hk
+  use para,         only : init_para, inode, distribute_calc, finalize_para, first_idx, last_idx, para_merge_real, para_sync_logical
+  use input,        only : read_input, read_qpoints, mu, nqpt, qvec, nnu, nu, seed, finalize_input
   !
   implicit none
   !
-  real(dp), dimension(:), allocatable :: spec
-  complex(dp), dimension(:, :), allocatable :: hk
-  complex(dp), dimension(:, :), allocatable :: gf
-  complex(dp) :: w
+  real(dp), dimension(:, :), allocatable :: Akw
+  complex(dp), dimension(:, :), allocatable :: hk, hkw, gf
+  complex(dp), dimension(:), allocatable :: sigma
   !
-  integer iq, ii, jj
-  integer dnq
+  logical isCorr
   !
-  CALL init_para('wannband')
+  integer iq, ii
+  !
+  CALL init_para('WannBand')
   CALL read_input('wannband')
-  CALL read_ham(seed)
   !
-  CALL ham_shift_ef(mu)
+  CALL read_ham(ham, seed)
+  CALL wannham_shift_ef(ham, mu)
   !
-  if (level>0) then
-    CALL init_impurity(beta, level)
-    CALL ham_fix_static()
-  endif
-  !
-  CALL distribute_calc(nen)
-  !
-  allocate(hk(norb, norb))
-  allocate(gf(norb, norb))
-  allocate(spec(nen))
+  allocate(hk(ham%norb, ham%norb), gf(ham%norb, ham%norb))
   !
   if (inode.eq.0) then
-    open(unit=fout, file='spectra.dat')
-    call output_header(fout)
+    write(stdout, '(A,1F14.9,A)') "   # Fermi level shifted to ", mu, " eV"
+    !
+    inquire(file=trim(seed)//".impdef", exist=isCorr)
+    !
   endif
   !
-  dnq=nqpt/100
-  if (dnq<2) dnq=2
+  call para_sync_logical(isCorr)
   !
-  do iq=1, nqpt
+  if (isCorr) then
+    !
+    CALL read_impfile(trim(seed)//".impdef")
+    CALL setup_mapping
+    !
+    CALL read_sigfile(trim(seed)//".sig")
+    CALL fix_sigma_static
+    !
+    allocate(sigma(nbath), hkw(ham%norb, ham%norb))
     !
     if (inode.eq.0) then
-      if (mod(iq-1, dnq).eq.0) then
-        write(stdout, *) "  ... Percentage done: ", (iq-1)*100/nqpt, "%"
-      endif
+      write(stdout, *) " H0+Sinf: "
+      call print_impurity(ham%hr(:, :, ham%r000))
     endif
     !
-    spec(:)=0.d0
-    call calc_hk(hk, qvec(:, iq))
+  endif
+  !
+  CALL read_posfile(trim(seed)//".pos")
+  !
+  !CALL read_kmesh("IBZKPT")
+  CALL read_qpoints
+  !
+  allocate(Akw(nnu, nqpt))
+  !
+  call distribute_calc(nqpt)
+  !
+  do iq=first_idx, last_idx
     !
-    do ii=first_idx, last_idx
+    if (inode.eq.0) then
       !
-      w=emesh(ii)+eps*cmplx_i
+      write(stdout, '(A,1I5,A,1I5,A)', advance='no') " First node calculating ", iq, " out of ", (last_idx-first_idx+1), " q-points..."
       !
-      if (level>1) then
-        call calc_corr_realgf(gf, hk, w, .false.)
+    endif
+    !
+    call calc_hk(hk, ham, qvec(:, iq))
+    !
+    do ii=1, nnu
+      !
+      if (isCorr) then
+        !
+        call interpolate_sigma_real(sigma, real(nu(ii)))
+        call restore_lattice(hkw, sigma)
+        !
+        hkw(:, :)=hkw(:, :)+hk(:, :)
+        !
+        call calc_g0(gf, hkw, nu(ii), ham%norb, .false.)
+        !
       else
-        call calc_g0(gf, hk, w, norb, .false.)
+        !
+        call calc_g0(gf, hk, nu(ii), ham%norb, .false.)
+        !
       endif
       !
-      do jj=1, norb
-        spec(ii)=spec(ii)-aimag(gf(jj, jj))
-      enddo
+      call calc_Akw(Akw(ii, iq), gf, ham%norb)
       !
     enddo ! ii
     !
-    call para_merge_real(spec, nen)
-    spec(:)=spec(:)*2.d0/twopi
-    !
     if (inode.eq.0) then
-      call output_spectral(spec, fout, nqpt)
+      !
+      write(stdout, *) "done"
+      !
     endif
     !
   enddo ! iq
   !
-  if (inode.eq.0) close(unit=fout)
+  if (inode.eq.0) then
+    !
+    write(stdout, *) " Generating output file..."
+    !
+  endif
   !
-  deallocate(hk, gf, spec)
+  call para_merge_real(Akw, nqpt*nnu)
   !
-  CALL finalize_wann
-  CALL finalize_impurity
+  if (inode.eq.0) then
+    open(unit=fout, file="spectra.dat")
+    !                    1...5...9.1...1...5...9.1...1...5...9.1...||1...5...9.1...||1...5...9.1...5...9.1.
+    write(fout, '(A)') "# ================= qvec ================= || === w(i) === || ======== Akw ======== "
+    !
+    do iq=1, nqpt
+      !
+      do ii=1, nnu
+      !
+      write(fout, '(3F14.9,2X,1F14.9,2X,1G22.12)') qvec(:, iq), real(nu(ii)), Akw(ii, iq)
+      !
+      enddo
+      !
+    enddo
+    !
+    close(unit=fout)
+    !
+    write(stdout, *) " All done."
+  endif
+  !
+  deallocate(hk, gf, Akw)
+  !
+  if (allocated(hkw)) deallocate(hkw)
+  if (allocated(sigma)) deallocate(sigma)
+  !
+  CALL finalize_lattice_kmesh
+  CALL finalize_lattice_structure
+  CALL finalize_lattice_ham
   CALL finalize_input
   CALL finalize_para
   !
 END PROGRAM
+!
+SUBROUTINE calc_Akw(Akw, gf, ndim)
+  !
+  use constants,  only : dp, twopi
+  implicit none
+  !
+  integer ndim
+  real(dp) :: Akw
+  complex(dp), dimension(ndim, ndim) :: gf
+  !
+  integer ii
+  !
+  Akw=0.d0
+  do ii=1, ndim
+    Akw=Akw-aimag(gf(ii, ii))*2.d0/twopi
+  enddo
+  !
+END SUBROUTINE

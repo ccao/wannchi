@@ -281,7 +281,7 @@ CONTAINS
       do iq1=0, nq1-1
         read(fin, *) tq1(:), tq2(:)
         do iq2=0, nq2
-          qvec(:, iq1*(nq2+1)+iq2+1)=tq1 + (iq2*1.d0)/nq2*tq2
+          qvec(:, iq1*(nq2+1)+iq2+1)=tq1(:) + (iq2*1.d0)/nq2*(tq2(:)-tq1(:))
         enddo
       enddo
     elseif (mode.eq.2) then
